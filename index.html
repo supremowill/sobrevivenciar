@@ -1056,9 +1056,9 @@
             constructor(position, player) {
                 super(position);
                 this.name = "Lord Vouldemord"; this.isFeiticeiroImortal = true;
-                this.maxHp = 12000 + (300 * player.level); this.hp = this.maxHp;
-                this.baseDamage = 180 + (player.maxHp * 0.07);
-                this.speed = 1.2; this.originalSpeed = 1.2; this.xp = 22000; this.score = 10000;
+                this.maxHp = 10000 + (450 * player.level); this.hp = this.maxHp;
+                this.baseDamage = 250 + (player.maxHp * 0.2);
+                this.speed = 1.2; this.originalSpeed = 1.2; this.xp = 50000; this.score = 10000;
                 this.hitboxRadius = 1.2; this.idealDistance = 18; this.retreatDistance = 12;
                 this.mesh = new THREE.Group(); this.mesh.position.copy(position);
                 this.setupVisuals();
@@ -1217,7 +1217,7 @@
                 this.owner = owner;
                 this.radius = 6;
                 this.duration = 3000; this.lifeTimer = this.duration;
-                this.damagePerSecond = 600 + (player.maxHp * 0.12);
+                this.damagePerSecond = 600 + (player.maxHp * 0.4);
                 this.lastDamageTick = 0; this.damageInterval = 1000;
                 const geo = new THREE.CylinderGeometry(this.radius, this.radius, 0.2, 64);
                 const mat = new THREE.MeshBasicMaterial({ color: 0x00aaff, transparent: true, opacity: 0.3 });
@@ -1243,9 +1243,9 @@
             constructor(position, player) {
                 super(position);
                 this.name = "Lich King"; this.isLichKing = true;
-                this.maxHp = 12000 + (400 * player.level) + (player.maxHp * 0.3); this.hp = this.maxHp;
-                this.damage = 200 + (player.maxHp * 0.08);
-                this.speed = 0.5; this.originalSpeed = 0.5; this.xp = 50000; this.score = 25000;
+                this.maxHp = 32000 + (450 * player.level) + (player.maxHp * 0.7); this.hp = this.maxHp;
+                this.damage = 350 + (player.maxHp * 0.15);
+                this.speed = 0.7; this.originalSpeed = 0.5; this.xp = 50000; this.score = 25000;
                 this.hitboxRadius = 1.5; this.auraRadius = 4;
                 this.mesh = new THREE.Group(); this.mesh.position.copy(position);
                 this.setupVisuals();

@@ -110,7 +110,7 @@
             box-shadow: 0 0 20px rgba(0,0,0,0.5);
         }
 
-        /* 🆕 --- Início: Estilos para Ranking e Input de Nome --- */
+        /* --- Início: Estilos para Ranking e Input de Nome --- */
         #player-name-input {
             padding: 15px;
             font-size: 1.2rem;
@@ -154,7 +154,7 @@
         .leaderboard-container li:last-child {
             border-bottom: none;
         }
-        /* 🆕 --- Fim: Estilos para Ranking e Input de Nome --- */
+        /* --- Fim: Estilos para Ranking e Input de Nome --- */
 
         /* --- HUD do Jogador --- */
         #player-hud {
@@ -521,9 +521,9 @@
         let player, gameManager, uiManager;
         let isGameOver = false, controlScheme = 'pc', animationFrameId;
         
-        // 🆕 Início - Variável global para nome do jogador
+        // Início - Variável global para nome do jogador
         let playerName = '';
-        // 🆕 Fim - Variável global para nome do jogador
+        // Fim - Variável global para nome do jogador
 
         // Arrays de objetos do jogo
         let enemies = [], playerProjectiles = [], enemyProjectiles = [], orbs = [], particles = [], dynamicEntities = [];
@@ -537,13 +537,13 @@
         document.getElementById('restart-button').addEventListener('click', () => window.location.reload());
 
         function selectPlatform(mode) {
-            // 🆕 Início - Armazena o nome do jogador ao iniciar
+            // Início - Armazena o nome do jogador ao iniciar
             playerName = document.getElementById('player-name-input').value.trim();
             if (!playerName) {
                 alert("Por favor, digite seu nome para continuar.");
                 return;
             }
-            // 🆕 Fim - Armazena o nome do jogador ao iniciar
+            // Fim - Armazena o nome do jogador ao iniciar
 
             controlScheme = mode;
             document.getElementById('start-screen').style.display = 'none';
@@ -622,7 +622,9 @@
                     marcaDaAlma: { isActive: false, timer: 0, visualMesh: null },
                     lichKingPrison: { isActive: false, timer: 0, visualMesh: null },
                     lichKingLifeDrain: { isActive: false, timer: 0, damagePerSecond: 0 },
-                    freezingConeHits: { count: 0, timer: 0 }
+                    freezingConeHits: { count: 0, timer: 0 },
+                    burning: { isActive: false, timer: 0, damagePerTick: 0, lastTick: 0, tickInterval: 1000, stacks: 0 }, // Efeito de Queimadura
+                    armorFracture: { isActive: false, timer: 0, amount: 0 }, // Debuff de armadura
                 };
                 this.debuffs = {
                     attackSpeed: { amount: 1.0, timer: 0 }
@@ -631,6 +633,11 @@
 
             getDamage(isAbility = false) {
                 let base = 30 * (this.level * 1.8);
+
+                const sabrePirataBuff = this.timedBuffs.find(b => b.type === 'sabre_pirata');
+                if (sabrePirataBuff && !isAbility) {
+                     base *= (1 + sabrePirataBuff.effects.physical_damage);
+                }
 
                 const coroaLichBuff = this.timedBuffs.find(b => b.type === 'coroa_lich_buff');
                 if (coroaLichBuff && isAbility) {
@@ -765,6 +772,7 @@
                             if(effectName === 'marcaDaAlma') this.clearMarcaDaAlma();
                             if(effectName === 'lichKingPrison') this.clearLichKingPrison();
                             if(effectName === 'freezingConeHits') effect.count = 0;
+                            if(effectName === 'burning') effect.stacks = 0; // Resetar stacks de queimadura
                         }
                     }
                 }
@@ -775,29 +783,51 @@
                         this.takeDamage(this.statusEffects.bleeding.damage, false);
                     }
                 }
+                if (this.statusEffects.burning.isActive) {
+                    if (now > this.statusEffects.burning.lastTick + this.statusEffects.burning.tickInterval) {
+                        this.statusEffects.burning.lastTick = now;
+                        this.takeDamage(this.statusEffects.burning.damagePerTick * this.statusEffects.burning.stacks, false);
+                        // Adicionar efeito visual de queimadura
+                        const particle = new Particle(this.mesh.position, new THREE.Vector3(0, 0.5, 0), new THREE.Color(0xff4500), 1);
+                        particles.push(particle);
+                        scene.add(particle.mesh);
+                    }
+                }
                 if (this.statusEffects.lichKingLifeDrain.isActive) {
                     this.takeDamage(this.statusEffects.lichKingLifeDrain.damagePerSecond * dt, false);
                 }
             }
             
-            takeDamage(amount, fromProjectile = true) {
+            takeDamage(amount, fromProjectile = true, isTrueDamage = false) {
                 if (isGameOver || (this.skills.r.isActive && !fromProjectile)) return;
 
-                const plantaBuff = this.timedBuffs.find(b => b.type === 'planta_buff');
-                if (plantaBuff) this.heal(amount * plantaBuff.effects.lifesteal);
+                let finalDamage = amount;
                 
+                // Ignora defesa se for dano verdadeiro
+                if (!isTrueDamage) {
+                    const plantaBuff = this.timedBuffs.find(b => b.type === 'planta_buff');
+                    if (plantaBuff) this.heal(amount * plantaBuff.effects.lifesteal);
+                    
+                    const fracture = this.statusEffects.armorFracture;
+                    const defenseModifier = fracture.isActive ? (1 + fracture.amount) : 1;
+                    
+                    finalDamage *= defenseModifier;
+                }
+
                 const e = this.skills.e;
                 if (e.isActive && e.shieldHp > 0) {
-                    const damageToShield = Math.min(amount, e.shieldHp);
+                    const damageToShield = Math.min(finalDamage, e.shieldHp);
                     e.shieldHp -= damageToShield; e.damageAbsorbed += damageToShield;
-                    const remainingDamage = amount - damageToShield;
+                    const remainingDamage = finalDamage - damageToShield;
                     if (remainingDamage > 0) this.hp -= remainingDamage;
-                } else { this.hp -= amount; }
-                if (fromProjectile) {
+                } else { this.hp -= finalDamage; }
+                
+                if (fromProjectile || isTrueDamage) {
                     this.isTakingDamage = true;
-                    this.mesh.material.color.set(0xff0000);
+                    this.mesh.material.color.set(isTrueDamage ? 0xff8800 : 0xff0000);
                     setTimeout(() => { this.mesh.material.color.set(this.originalColor); this.isTakingDamage = false; }, 150);
                 }
+                
                 if (this.hp <= 0) { this.hp = 0; this.die(); }
             }
             
@@ -841,6 +871,19 @@
                     this.mesh.material.emissive.set(0x000000);
                 }
             }
+            clearNegativeEffects() {
+                const effectsToClear = ['slowed', 'burning', 'bleeding', 'frozen', 'stunned', 'rooted', 'attackSpeedSlow', 'disoriented', 'blind', 'silenced', 'armorFracture'];
+                effectsToClear.forEach(effectName => {
+                    const effect = this.statusEffects[effectName];
+                    if (effect) {
+                        effect.isActive = false;
+                        effect.timer = 0;
+                        if(effectName === 'slowed') this.speed = this.originalSpeed;
+                        if(effectName === 'burning') effect.stacks = 0;
+                    }
+                });
+                this.clearFreeze(); // Garante que a parte visual seja limpa
+            }
 
             applyLichKingPrison(duration) {
                 const effect = this.statusEffects.lichKingPrison;
@@ -876,7 +919,9 @@
             applyDisorientation(duration) { if(this.statusEffects.disoriented.isActive) return; this.statusEffects.disoriented.isActive = true; this.statusEffects.disoriented.timer = duration; document.body.classList.add('disoriented-screen'); }
             applyStun(duration) { this.statusEffects.stunned.isActive = true; this.statusEffects.stunned.timer = Math.max(this.statusEffects.stunned.timer, duration); }
             applyBleed(duration, damagePerTick) { this.statusEffects.bleeding.isActive = true; this.statusEffects.bleeding.timer = Math.max(this.statusEffects.bleeding.timer, duration); this.statusEffects.bleeding.damage = damagePerTick; this.statusEffects.bleeding.lastTick = Date.now(); }
-            applySlow(duration, amount) { this.statusEffects.slowed.isActive = true; this.statusEffects.slowed.timer = Math.max(this.statusEffects.slowed.timer, duration); this.statusEffects.slowed.amount = amount; }
+            applySlow(duration, amount) { this.statusEffects.slowed.isActive = true; this.statusEffects.slowed.timer = Math.max(this.statusEffects.slowed.timer, duration); this.statusEffects.slowed.amount = Math.max(this.statusEffects.slowed.amount, amount); }
+            applyBurn(duration, damage, stacks = 1) { const burn = this.statusEffects.burning; burn.isActive = true; burn.timer = Math.max(burn.timer, duration); burn.damagePerTick = damage; burn.stacks = Math.min(burn.stacks + stacks, 5); /* Limite de 5 stacks */ burn.lastTick = Date.now(); }
+            applyArmorFracture(duration, amount) { const fracture = this.statusEffects.armorFracture; fracture.isActive = true; fracture.timer = Math.max(fracture.timer, duration); fracture.amount = Math.max(fracture.amount, amount); }
             applyAttackSpeedDebuff(duration, amount) { this.debuffs.attackSpeed.amount = amount; this.debuffs.attackSpeed.timer = duration; }
             applyBlindness(duration) { this.statusEffects.blind.isActive = true; this.statusEffects.blind.timer = Math.max(this.statusEffects.blind.timer, duration); uiManager.toggleBlindEffect(true); }
             applySilence(duration) { this.statusEffects.silenced.isActive = true; this.statusEffects.silenced.timer = Math.max(this.statusEffects.silenced.timer, duration); }
@@ -911,6 +956,10 @@
             takeDamage(amount, instigator, countsForPassive = true) { 
                 if (this.isDestroyed || this.isInvulnerable) return;
                 
+                if(this.isGangplank) {
+                    amount *= (1 - this.defense); // Redução de dano do Gangplank
+                }
+
                 if (instigator?.isPlayer) {
                     const essenciaNegraBuff = instigator.timedBuffs.find(b => b.type === 'essencia_negra');
                     if (essenciaNegraBuff) instigator.heal(amount * essenciaNegraBuff.effects.lifesteal);
@@ -981,6 +1030,315 @@
         
         // --- INÍCIO DA REORDENAÇÃO DAS CLASSES DE INIMIGOS ---
 
+        // ### INIMIGO: Gangplank – O Pirata Sanguinário ###
+        class Gangplank extends Enemy {
+            constructor(position, player) {
+                super(position);
+                this.isGangplank = true;
+                this.name = "Gangplank – O Pirata Sanguinário";
+
+                // Atributos base
+                this.baseMaxHp = 1200;
+                this.baseDamage = 40;
+                this.maxHp = this.baseMaxHp;
+                this.hp = this.maxHp;
+                this.attackRange = 30;
+                this.defense = 0.10; // 10% de redução de dano físico
+                this.speed = 1.0;
+                this.originalSpeed = 1.0;
+                this.xp = 300;
+                this.score = 450;
+                this.hitboxRadius = 1.2;
+
+                // Forma Geométrica (Corpo de barril, cabeça de cone, braços de caixa)
+                this.mesh = new THREE.Group();
+                this.mesh.position.copy(position);
+
+                const bodyGeo = new THREE.CylinderGeometry(1, 1.2, 2.5, 12);
+                const bodyMat = new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.8 });
+                const body = new THREE.Mesh(bodyGeo, bodyMat);
+                body.position.y = 1.25;
+                this.mesh.add(body);
+
+                const headGeo = new THREE.ConeGeometry(0.8, 1.2, 8);
+                const headMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
+                const head = new THREE.Mesh(headGeo, headMat);
+                head.position.y = 3.2;
+                this.mesh.add(head);
+
+                const eyeGeo = new THREE.SphereGeometry(0.15);
+                const eyeMat = new THREE.MeshBasicMaterial({ color: 0xff4500 });
+                const eye = new THREE.Mesh(eyeGeo, eyeMat);
+                eye.position.set(0, 3.4, 0.7);
+                this.mesh.add(eye);
+                
+                // Habilidades e Passiva
+                this.habilidades = {
+                    q: { cooldown: 4000, lastUsed: 0 }, // Disparo de Mosquete
+                    e: { cooldown: 9000, lastUsed: 0 }, // Barril de Pólvora
+                    w: { cooldown: 0, lastUsed: 0, used: false }, // Rum Cura-dor (uso único por fase < 50% HP)
+                    r: { cooldown: 30000, lastUsed: 0 }  // Salva de Canhões
+                };
+                this.passiva = {
+                    cooldown: 4000,
+                    timer: 4000, // Começa carregada
+                    isReady: true
+                };
+
+                this.barrels = []; // Armazena os barris ativos
+
+                // Efeito de Spawn
+                this.spawnAnimation();
+            }
+
+            spawnAnimation() {
+                this.mesh.scale.set(0.1, 0.1, 0.1);
+                this.mesh.visible = false;
+                
+                // Partículas de neblina de pólvora
+                for(let i = 0; i < 50; i++) {
+                    const pos = this.mesh.position.clone().add(new THREE.Vector3(Math.random() * 4 - 2, Math.random() * 2, Math.random() * 4 - 2));
+                    const vel = new THREE.Vector3(0, Math.random() * 0.5, 0);
+                    const color = new THREE.Color(0x555555);
+                    const p = new Particle(pos, vel, color, 2.5);
+                    particles.push(p);
+                    scene.add(p.mesh);
+                }
+
+                setTimeout(() => {
+                    this.mesh.visible = true;
+                    let scale = 0.1;
+                    const anim = () => {
+                        scale += 0.05;
+                        this.mesh.scale.set(scale, scale, scale);
+                        if (scale < 1) requestAnimationFrame(anim);
+                    };
+                    anim();
+                }, 500);
+            }
+
+            getDamage(type, target) {
+                let damage = 0;
+                switch(type) {
+                    case 'q': // Disparo de Mosquete
+                        damage = this.baseDamage + (target.hp * 0.05);
+                        break;
+                    case 'e': // Barril de Pólvora
+                        damage = 60 + (this.baseDamage * 0.15);
+                        break;
+                    case 'r': // Salva de Canhões
+                        damage = 40 + (target.hp * 0.10);
+                        break;
+                    default:
+                        damage = this.baseDamage + (target.maxHp * 0.05);
+                        break;
+                }
+                return damage;
+            }
+            
+            update(dt, player) {
+                if (isGameOver || this.isDestroyed) return;
+
+                const now = Date.now();
+                const ms = dt * 1000;
+                const dist = this.mesh.position.distanceTo(player.mesh.position);
+
+                // Lógica de escalar vida
+                this.maxHp = this.baseMaxHp + (this.baseMaxHp * 0.15 * Math.floor(gameManager.gameTime / 120));
+
+                // Lógica da Passiva
+                if (!this.passiva.isReady) {
+                    this.passiva.timer -= ms;
+                    if (this.passiva.timer <= 0) {
+                        this.passiva.isReady = true;
+                    }
+                }
+
+                // IA Comportamental
+                this.mesh.lookAt(player.mesh.position.x, this.mesh.position.y, player.mesh.position.z);
+                
+                if (now > this.habilidades.r.lastUsed + this.habilidades.r.cooldown) {
+                    this.usarSalvaDeCanhoes(player);
+                } else if (this.hp / this.maxHp < 0.5 && !this.habilidades.w.used) {
+                    this.usarRumCurador();
+                } else if (dist <= 15 && now > this.habilidades.e.lastUsed + this.habilidades.e.cooldown) {
+                    this.usarBarrilDePolvora(player);
+                } else if (dist > 20 && now > this.habilidades.q.lastUsed + this.habilidades.q.cooldown) {
+                    this.usarDisparoDeMosquete(player);
+                } else {
+                    const dir = player.mesh.position.clone().sub(this.mesh.position).normalize();
+                    this.mesh.position.add(dir.multiplyScalar(this.speed * dt));
+                }
+            }
+
+            usarDisparoDeMosquete(target) {
+                this.habilidades.q.lastUsed = Date.now();
+                const startPos = this.mesh.position.clone().add(new THREE.Vector3(0, 2, 0));
+                const dir = target.mesh.position.clone().sub(startPos).normalize();
+                
+                const p = new Projectile(startPos, dir, this, target);
+                p.damage = this.getDamage('q', target);
+                p.mesh.material.color.set(0xffa500);
+                p.mesh.material.emissive.set(0xffa500);
+                
+                if(this.passiva.isReady) {
+                    this.passiva.isReady = false;
+                    this.passiva.timer = this.passiva.cooldown;
+                    p.specialEffect = 'tiroIncendiario';
+                }
+                
+                enemyProjectiles.push(p);
+                scene.add(p.mesh);
+            }
+            
+            usarBarrilDePolvora(target) {
+                this.habilidades.e.lastUsed = Date.now();
+                const barrelPos = this.mesh.position.clone().add(this.mesh.getWorldDirection(new THREE.Vector3()).multiplyScalar(5));
+                barrelPos.y = 0.5;
+
+                const barrel = new PowderKeg(barrelPos, this);
+                dynamicEntities.push(barrel);
+                scene.add(barrel.mesh);
+                this.barrels.push(barrel);
+            }
+            
+            usarRumCurador() {
+                this.habilidades.w.used = true; // Só pode usar uma vez
+                this.heal(this.maxHp * 0.20);
+                // Lógica para remover efeitos negativos já está no Player, precisaria de uma implementação similar para o Enemy.
+                // Simulando limpeza:
+                this.status.slowTimer = 0;
+                this.speed = this.originalSpeed;
+                // Efeito visual de cura
+                createExplosion(this.mesh.position, 15, new THREE.Color(0x00ff00));
+            }
+
+            usarSalvaDeCanhoes(target) {
+                this.habilidades.r.lastUsed = Date.now();
+                const areaSize = 5;
+                const targetAreaCenter = target.mesh.position.clone();
+                
+                // Marcar a área
+                const indicatorGeo = new THREE.CircleGeometry(areaSize, 32);
+                const indicatorMat = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.4 });
+                const indicator = new THREE.Mesh(indicatorGeo, indicatorMat);
+                indicator.position.copy(targetAreaCenter);
+                indicator.position.y = 0.01;
+                indicator.rotation.x = -Math.PI / 2;
+                scene.add(indicator);
+
+                setTimeout(() => {
+                    scene.remove(indicator);
+                    // 3 Rajadas
+                    for(let i=0; i<3; i++) {
+                        setTimeout(() => {
+                           const explosionPos = targetAreaCenter.clone().add(new THREE.Vector3((Math.random()-0.5)*areaSize, 0, (Math.random()-0.5)*areaSize));
+                           const damage = this.getDamage('r', target);
+                           createAreaExplosion(explosionPos, 3, damage, this);
+                           if (target.mesh.position.distanceTo(explosionPos) < 3) {
+                                target.takeDamage(damage, false);
+                                target.applySlow(2000, 0.40);
+                           }
+                        }, i * 500);
+                    }
+                }, 2000);
+            }
+            
+            heal(amount) {
+                this.hp = Math.min(this.maxHp, this.hp + amount);
+            }
+
+            destroy(instigator) {
+                gameManager.isGangplankAlive = false;
+                gameManager.activeBoss = null;
+                createExplosion(this.mesh.position, 80, new THREE.Color(0x8B4513));
+
+                if (instigator?.isPlayer) {
+                    instigator.addXp(this.xp);
+                    instigator.score += this.score;
+
+                    const rand = Math.random();
+                    let buffType, effects, duration, color, itemName;
+
+                    if (rand < 0.10) { // 10% Barril Explosivo
+                        // Para simplicidade, vamos dar um buff temporário de dano em área ao jogador
+                        itemName = "Barril Explosivo";
+                        buffType = 'barril_explosivo_buff';
+                        effects = { area_damage_on_attack: true };
+                        duration = 60;
+                        color = new THREE.Color(0xffa500);
+                    } else if (rand < 0.40) { // 30% Sabre Pirata
+                        itemName = "Sabre Pirata";
+                        buffType = 'sabre_pirata';
+                        effects = { physical_damage: 0.10 };
+                        duration = 120;
+                        color = new THREE.Color(0xC0C0C0);
+                    }
+                    
+                    if(itemName) {
+                        const buffAura = new AuraDeRecompensa(this.mesh.position, buffType, effects, duration, color);
+                        dynamicEntities.push(buffAura);
+                        scene.add(buffAura.mesh);
+                         uiManager.showEventMessage(`Item dropado: ${itemName}!`);
+                    }
+                }
+                
+                super.destroy(instigator);
+            }
+        }
+        
+        // Entidade: Barril de Pólvora
+        class PowderKeg {
+            constructor(position, owner) {
+                this.owner = owner;
+                this.radius = 2.5; // Metade de 5x5
+                this.lifetime = 3000;
+                this.hp = 1;
+                this.isBarrel = true;
+                
+                const geo = new THREE.CylinderGeometry(0.5, 0.5, 1, 12);
+                const mat = new THREE.MeshStandardMaterial({ color: 0x966F33 });
+                this.mesh = new THREE.Mesh(geo, mat);
+                this.mesh.position.copy(position);
+                this.hitboxRadius = 0.5;
+            }
+
+            update(dt, player) {
+                this.lifetime -= dt * 1000;
+                if (this.lifetime <= 0) {
+                    this.explode(player);
+                }
+            }
+
+            takeDamage(amount, instigator) {
+                 if (this.hp <= 0) return;
+                 this.hp -= amount;
+                 if (this.hp <= 0) {
+                     this.explode(instigator);
+                 }
+            }
+
+            explode(targetPlayer) {
+                if (this.isDestroyed) return;
+                this.isDestroyed = true;
+                
+                const damage = this.owner.getDamage('e', targetPlayer);
+                createAreaExplosion(this.mesh.position, 5, damage, this.owner);
+
+                if (targetPlayer.mesh.position.distanceTo(this.mesh.position) < 5) {
+                    targetPlayer.takeDamage(damage, false);
+                    targetPlayer.applyArmorFracture(4000, 0.20); // -20% de defesa
+                }
+                this.destroy();
+            }
+            
+            destroy() {
+                if (this.mesh.parent) scene.remove(this.mesh);
+                removeFromArray(dynamicEntities, this);
+                if(this.owner) removeFromArray(this.owner.barrels, this);
+            }
+        }
+
         class PurpleCube extends Enemy { constructor(position) { super(position); const baseHp = 200; const baseDamage = 25; this.maxHp = baseHp * gameManager.globalMultiplier; this.hp = this.maxHp; this.damage = baseDamage * gameManager.globalMultiplier; this.xp = 50; this.speed = 2.5; this.originalSpeed = 2.5; this.attackRange = 12; this.attackCooldown = 2000; this.lastAttackTime = 0; this.score = 50; const geo = new THREE.BoxGeometry(0.8, 0.8, 0.8); const mat = new THREE.MeshStandardMaterial({ color: 0x9b59b6 }); this.mesh = new THREE.Mesh(geo, mat); this.mesh.position.copy(position); this.mesh.position.y = 0.4; this.mesh.castShadow = true; this.hitboxRadius = 0.6; } scaleStats(multiplier) { this.applyGlobalBuff(multiplier); } destroy(instigator) { createExplosion(this.mesh.position, 10, this.mesh.material.color); if (instigator?.isPlayer) { instigator.addXp(this.xp); instigator.score += this.score; } super.destroy(instigator); } attack(target) { const now = Date.now(); if (now > this.lastAttackTime + this.attackCooldown) { this.lastAttackTime = now; const dir = target.mesh.position.clone().sub(this.mesh.position).normalize(); const p = new Projectile(this.mesh.position.clone(), dir, this, target); enemyProjectiles.push(p); scene.add(p.mesh); } } update(dt, player) { if (isGameOver || this.isDestroyed || this.updateStatus(dt)) return; const dist = this.mesh.position.distanceTo(player.mesh.position); if (dist > this.attackRange) { const dir = player.mesh.position.clone().sub(this.mesh.position).normalize(); this.mesh.position.add(dir.multiplyScalar(this.speed * dt)); } else { this.attack(player); } this.mesh.lookAt(player.mesh.position.x, this.mesh.position.y, player.mesh.position.z); } }
         
         class RedCone extends Enemy { constructor(position) { super(position); this.maxHp = 400 * gameManager.globalMultiplier; this.hp = this.maxHp; this.damage = 5 * gameManager.globalMultiplier; this.xp = 100; this.speed = 0; this.originalSpeed = 0; this.attackRange = 15; this.attackCooldown = 1500; this.lastAttackTime = 0; this.score = 75; this.projectileCount = 1; this.lastProjectileIncreaseTime = 0; const geo = new THREE.ConeGeometry(0.7, 1.5, 16); const mat = new THREE.MeshStandardMaterial({ color: 0xe74c3c }); this.mesh = new THREE.Mesh(geo, mat); this.mesh.position.copy(position); this.mesh.position.y = 0.75; this.mesh.castShadow = true; this.hitboxRadius = 0.7; } scaleStats(multiplier) { this.applyGlobalBuff(multiplier); } destroy(instigator) { createExplosion(this.mesh.position, 15, this.mesh.material.color); if (instigator?.isPlayer) { instigator.addXp(this.xp); instigator.score += this.score; } super.destroy(instigator); } attack(target) { const now = Date.now(); if (now > this.lastAttackTime + this.attackCooldown) { this.lastAttackTime = now; const baseDir = target.mesh.position.clone().sub(this.mesh.position).normalize(); const coneAngle = Math.PI / 6; for (let i = 0; i < this.projectileCount; i++) { const offset = (this.projectileCount > 1) ? (i - (this.projectileCount - 1) / 2) * (coneAngle / (this.projectileCount - 1)) : 0; const dir = baseDir.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), offset); const p = new Projectile(this.mesh.position.clone(), dir, this, target); enemyProjectiles.push(p); scene.add(p.mesh); } } } update(dt, player) { if (isGameOver || this.isDestroyed || this.updateStatus(dt)) return; this.lastProjectileIncreaseTime += dt; if (this.lastProjectileIncreaseTime > 5) { this.lastProjectileIncreaseTime = 0; this.projectileCount++; } this.mesh.lookAt(player.mesh.position.x, this.mesh.position.y, player.mesh.position.z); if (this.mesh.position.distanceTo(player.mesh.position) <= this.attackRange) this.attack(player); } }
@@ -1006,7 +1364,8 @@
                 this.hitboxRadius = 0.5; this.isSoul = true;
                 const geo = new THREE.SphereGeometry(this.hitboxRadius, 16, 16);
                 const mat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, emissive: 0xff0000, emissiveIntensity: 0.8 });
-                this.mesh = new THREE.Mesh(geo, mat); this.mesh.position.copy(position);
+                this.mesh = new THREE.Mesh(geo, mat);
+                this.mesh.position.copy(position);
             }
             update(dt) {
                 if (this.isDestroyed) return;
@@ -1032,7 +1391,8 @@
                 const geo = new THREE.CircleGeometry(this.radius, 32);
                 const mat = new THREE.MeshBasicMaterial({ color: 0x4a004a, transparent: true, opacity: 0.5 });
                 this.mesh = new THREE.Mesh(geo, mat);
-                this.mesh.position.copy(position); this.mesh.position.y = 0.01; this.mesh.rotation.x = -Math.PI / 2;
+                this.mesh.position.copy(position);
+                this.mesh.position.y = 0.01; this.mesh.rotation.x = -Math.PI / 2;
                 const ringGeo = new THREE.RingGeometry(this.radius * 0.95, this.radius, 64);
                 const ringMat = new THREE.MeshBasicMaterial({ color: 0xff00ff, transparent: true, opacity: 0.8 });
                 this.pulseRing = new THREE.Mesh(ringGeo, ringMat); this.mesh.add(this.pulseRing);
@@ -1657,7 +2017,7 @@
                 this.mesh.position.copy(start);
                 this.direction = dir;
                 this.speed = 15;
-                this.damage = (owner.getDamage && typeof owner.getDamage === 'function' && !isPlayer) ? owner.getDamage(target || player) : owner.damage || (isPlayer ? owner.getDamage() : 10);
+                this.damage = (owner.getDamage && typeof owner.getDamage === 'function' && !isPlayer) ? owner.getDamage(null, target || player) : owner.damage || (isPlayer ? owner.getDamage() : 10);
                 this.lifetime = 3;
                 this.specialEffect = null;
                 this.isBuffed = null;
@@ -1716,10 +2076,12 @@
                     spawnRainha: 300, 
                     spawnPlantaCarnivora: 210,
                     spawnFeiticeiro: 420,
-                    spawnLichKing: 600
+                    spawnLichKing: 600,
+                    spawnGangplank: 360 // 6 minutos
                 };
                 this.isRainhaAlive = false; 
                 this.isPlantaCarnivoraAlive = false;
+                this.isGangplankAlive = false; // Controle do Gangplank
                 this.eventTimers = { superBoss: { time: 180, triggered: false }, theMightyOne: { nextSpawnTime: 600, isAlive: false, instance: null } };
                 this.respawnQueue = []; this.activeBoss = null;
                 this.guardianTypes = [GuardianGuerreiro, GuardianMago, GuardianArqueiro];
@@ -1741,6 +2103,8 @@
                 this.timers.spawnPlantaCarnivora -= dt; if (this.timers.spawnPlantaCarnivora <= 0) { this.timers.spawnPlantaCarnivora = 210; if (!this.isPlantaCarnivoraAlive) { this.isPlantaCarnivoraAlive = true; const planta = new PlantaCarnivoraRainha(getSpawnPosition(), player); enemies.push(planta); scene.add(planta.mesh); this.activeBoss = planta; uiManager.showEventMessage("⚠️ O chão treme... A Planta Carnívora Rainha despertou!"); } }
                 this.timers.spawnFeiticeiro -= dt; if (this.timers.spawnFeiticeiro <= 0) { this.timers.spawnFeiticeiro = 420; const existingFeiticeiro = enemies.find(e => e.isFeiticeiroImortal); if (!existingFeiticeiro) { const feiticeiro = new FeiticeiroImortalDasTrevas(getSpawnPosition(), player); enemies.push(feiticeiro); scene.add(feiticeiro.mesh); this.activeBoss = feiticeiro; uiManager.showEventMessage("⚠️ Um feitiço ancestral está em ação... Lord Vouldemord chegou."); } }
                 this.timers.spawnLichKing -= dt; if(this.timers.spawnLichKing <= 0) { this.timers.spawnLichKing = 600; const existingLichKing = enemies.find(e => e.isLichKing); if(!existingLichKing) { const lichKing = new LichKing(getSpawnPosition(), player); enemies.push(lichKing); scene.add(lichKing.mesh); this.activeBoss = lichKing; uiManager.showEventMessage("⚠️ O frio absoluto tomou conta... O Lich King se ergue da tumba!"); } }
+                // Spawn do Gangplank
+                this.timers.spawnGangplank -= dt; if (this.timers.spawnGangplank <= 0) { this.timers.spawnGangplank = 360; if (!this.isGangplankAlive) { this.isGangplankAlive = true; const gangplank = new Gangplank(getSpawnPosition("Spawn_Porto"), player); enemies.push(gangplank); scene.add(gangplank.mesh); this.activeBoss = gangplank; uiManager.showEventMessage("⚠️ O cheiro de pólvora e rum está no ar... Gangplank chegou!"); } }
             }
             checkEvents(dt) { const superBossEvent = this.eventTimers.superBoss; if (!superBossEvent.triggered && this.gameTime >= superBossEvent.time) { superBossEvent.triggered = true; this.activeBoss = spawnSuperBoss(); uiManager.showEventMessage("Uma força sobrenatural se manifesta!"); } const mightyOneEvent = this.eventTimers.theMightyOne; if (!mightyOneEvent.isAlive && this.gameTime >= mightyOneEvent.nextSpawnTime) { this.spawnTheMightyOne(); } }
             spawnTheMightyOne() { const event = this.eventTimers.theMightyOne; event.isAlive = true; const boss = new TheMightyOne(getSpawnPosition()); event.instance = boss; enemies.push(boss); scene.add(boss.mesh); boss.init(); }
@@ -1787,6 +2151,8 @@
                     else if (buff.type === 'lamina_geada_buff') buffName = 'Lâmina da Geada';
                     else if (buff.type === 'fragmento_morte_buff') buffName = 'Fragmento da Morte';
                     else if (buff.type === 'talisma_quebrado_buff') buffName = 'Talismã Quebrado';
+                    else if (buff.type === 'sabre_pirata') buffName = 'Sabre Pirata';
+                    else if (buff.type === 'barril_explosivo_buff') buffName = 'Barril Extra';
                     if (buffName) { if(finalBuffText !== '') finalBuffText += ' | '; finalBuffText += `${buffName} (${(buff.timer / 1000).toFixed(1)}s)`; }
                 });
                 if(finalBuffText !== '') { this.buffDisplay.style.display = 'block'; this.buffName.textContent = finalBuffText; } else { this.buffDisplay.style.display = 'none'; }
@@ -1810,9 +2176,9 @@
                 document.getElementById('final-collapse-level').textContent = collapseLevel; 
                 document.getElementById('game-over-screen').style.display = 'flex'; 
 
-                // 🆕 Início - Chamada para postar score e atualizar ranking
+                // --- Chamada para postar score e atualizar ranking
                 window.rankingManager.postScore(playerName, score);
-                // 🆕 Fim - Chamada para postar score e atualizar ranking
+                // --- Fim da Chamada
             }
         }
 
@@ -1849,7 +2215,23 @@
         }
         function checkCollisions() {
             if (isGameOver) return;
-            for (let i = playerProjectiles.length - 1; i >= 0; i--) { const p = playerProjectiles[i]; if (!p?.mesh) continue; for (let j = enemies.length - 1; j >= 0; j--) { const e = enemies[j]; if (!e || e.isDestroyed || !e.mesh) continue; const dist = p.mesh.position.distanceTo(e.mesh.position); if (dist < (p.hitboxRadius + e.hitboxRadius)) { let totalDamage = p.damage; if (p.owner.isPlayer && p.owner.activeBuff.type === 'guerreiro' && e.maxHp) totalDamage += e.maxHp * 0.03; if (p.isBuffed === 'arqueiro' && e.maxHp) totalDamage += e.maxHp * 0.03 * 2; if (e.takeDamage) e.takeDamage(totalDamage, player); p.destroy(); break; } } } 
+            for (let i = playerProjectiles.length - 1; i >= 0; i--) { const p = playerProjectiles[i]; if (!p?.mesh) continue; 
+                // Colisão de projétil com barril
+                for (let k = dynamicEntities.length - 1; k >= 0; k--) {
+                    const barrel = dynamicEntities[k];
+                    if (barrel.isBarrel && !barrel.isDestroyed) {
+                        const dist = p.mesh.position.distanceTo(barrel.mesh.position);
+                        if (dist < (p.hitboxRadius + barrel.hitboxRadius)) {
+                            barrel.takeDamage(p.damage, player);
+                            p.destroy();
+                            return; // Projétil foi consumido
+                        }
+                    }
+                }
+
+                for (let j = enemies.length - 1; j >= 0; j--) { const e = enemies[j]; if (!e || e.isDestroyed || !e.mesh) continue; const dist = p.mesh.position.distanceTo(e.mesh.position); if (dist < (p.hitboxRadius + e.hitboxRadius)) { let totalDamage = p.damage; if (p.owner.isPlayer && p.owner.activeBuff.type === 'guerreiro' && e.maxHp) totalDamage += e.maxHp * 0.03; if (p.isBuffed === 'arqueiro' && e.maxHp) totalDamage += e.maxHp * 0.03 * 2; if (e.takeDamage) e.takeDamage(totalDamage, player); p.destroy(); break; } } 
+            
+            } 
             for (let i = enemyProjectiles.length - 1; i >= 0; i--) {
                 const p = enemyProjectiles[i]; if (!p?.mesh) continue; if (isGameOver) break; const dist = p.mesh.position.distanceTo(player.mesh.position);
                 if (dist < (p.hitboxRadius + player.hitboxRadius)) {
@@ -1861,6 +2243,12 @@
                         else if (p.specialEffect === 'enraizar') player.applyStun(1500);
                         else if (p.specialEffect === 'lançaGelo') player.applySlow(2000, 0.5);
                         else if (p.specialEffect === 'explosaoDasTrevas') player.applyBlindness(1500);
+                        else if (p.specialEffect === 'tiroIncendiario') {
+                             player.takeDamage(p.damage); // Dano base do tiro
+                             player.takeDamage(20, false, true); // Dano verdadeiro
+                             player.applyBurn(2000, 5, 1); // Queimadura
+                             player.applySlow(1000, 0.20); // Lentidão
+                        }
                         else if (p.specialEffect === 'freezingCone') {
                             const effect = player.statusEffects.freezingConeHits;
                             effect.count++;
@@ -1877,7 +2265,17 @@
             for (let i = orbs.length - 1; i >= 0; i--) { const orb = orbs[i]; if (!orb?.mesh) continue; const pickupRadius = player.hitboxRadius + orb.hitboxRadius + (player.skillLevels.passive * 0.5); if(player.mesh.position.distanceTo(orb.mesh.position) < pickupRadius) { if (orb instanceof XpOrb) { player.collectOrb(orb); orb.destroy(); spawnXpOrb(); } else if (orb instanceof BuffOrb) { if (orb.buffType === 'essencia_negra') { player.applyTimedBuff('essencia_negra', 60, { magic_damage: 1.50, cooldown_reduction: 0.30, lifesteal: 0.05 }); } else { const magnitude = 1.20; player.applyTemporaryBuff(orb.buffType, 15, magnitude); } orb.destroy(); } } }
         }
         function createAreaExplosion(position, radius, damage, instigator, mainTarget, isChainReaction = false, isPlayerAbility = false) { const explosionGeo = new THREE.SphereGeometry(radius, 16, 16); const explosionMat = new THREE.MeshBasicMaterial({ color: 0xffa500, transparent: true, opacity: 0.7 }); const explosionMesh = new THREE.Mesh(explosionGeo, explosionMat); explosionMesh.position.copy(position); scene.add(explosionMesh); let scale = 0.1; const anim = () => { if(!explosionMesh?.parent) return; scale += 0.15; explosionMesh.scale.set(scale, scale, scale); explosionMesh.material.opacity -= 0.05; if (explosionMesh.material.opacity > 0) requestAnimationFrame(anim); else scene.remove(explosionMesh); }; anim(); if (instigator && !instigator.isPlayer) { if (player.mesh.position.distanceTo(position) < radius) { player.takeDamage(damage, false); } return; } enemies.forEach(enemy => { if (!enemy || enemy.isDestroyed) return; if (enemy !== instigator && enemy.mesh.position.distanceTo(position) < radius) { let explosionDamage = damage; if(isPlayerAbility && instigator.isPlayer) { explosionDamage = instigator.getDamage(true) * (damage / instigator.getDamage()); } if (enemy === mainTarget) explosionDamage *= 2; if (enemy.takeDamage) enemy.takeDamage(explosionDamage, instigator, false); if (instigator.isPlayer && player.skillLevels.passive >= 2) enemy.applySlow?.(2000); if (instigator.isPlayer && player.skillLevels.passive >= 4 && enemy === mainTarget) enemy.status.isMarked = true; if (instigator.isPlayer && player.skillLevels.passive >= 5 && !isChainReaction && enemy !== mainTarget) { createAreaExplosion(enemy.mesh.position, radius * 0.5, damage * 0.5, instigator, null, true, isPlayerAbility); } } }); }
-        function getSpawnPosition() { const a = Math.random()*Math.PI*2; const r = 30+Math.random()*20; return new THREE.Vector3(Math.cos(a)*r, 0.5, Math.sin(a)*r); }
+        
+        function getSpawnPosition(type = 'default') {
+            if (type === 'Spawn_Porto') {
+                // Posição fixa para o porto, ex: perto da borda do mapa
+                return new THREE.Vector3(45, 0.5, 0);
+            }
+            const a = Math.random() * Math.PI * 2;
+            const r = 30 + Math.random() * 20;
+            return new THREE.Vector3(Math.cos(a) * r, 0.5, Math.sin(a) * r);
+        }
+
         function spawnXpOrb() { const p = new THREE.Vector3((Math.random()-0.5)*95, 0.5, (Math.random()-0.5)*95); if(p.length()<5) p.normalize().multiplyScalar(5); const o = new XpOrb(p); scene.add(o.mesh); orbs.push(o); }
         function spawnPurpleCube() { const e = new PurpleCube(getSpawnPosition()); enemies.push(e); scene.add(e.mesh); }
         function gerarConeVermelhoComDefensor() { const conePos = getSpawnPosition(); const cone = new RedCone(conePos); enemies.push(cone); scene.add(cone.mesh); if(gameManager.defenderTypes && gameManager.defenderTypes.length > 0) { const DefenderClass = gameManager.defenderTypes[Math.floor(Math.random() * gameManager.defenderTypes.length)]; const offset = new THREE.Vector3((Math.random() - 0.5) * 8, 0, (Math.random() - 0.5) * 8); const defenderPos = conePos.clone().add(offset); const defender = new DefenderClass(defenderPos, cone); enemies.push(defender); scene.add(defender.mesh); } }

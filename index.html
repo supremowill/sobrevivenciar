@@ -1,0 +1,2011 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sobrevivência 3D</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --poderoso-color: #ff00ff;
+        }
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+            color: #fff;
+            font-family: 'Orbitron', sans-serif;
+            -webkit-user-select: none; /* Safari */
+            -ms-user-select: none; /* IE 10 and IE 11 */
+            user-select: none; /* Standard syntax */
+        }
+        canvas {
+            display: block;
+        }
+        /* --- Efeito de Desorientação --- */
+        .disoriented-screen {
+            filter: invert(1) hue-rotate(180deg);
+            transition: filter 0.2s ease-in-out;
+        }
+
+        /* --- Efeito de Cegueira --- */
+        .blind-screen-effect {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle, transparent 30%, black 80%);
+            pointer-events: none;
+            z-index: 500;
+            opacity: 0;
+            transition: opacity 0.3s ease-in-out;
+        }
+        .blind-screen-effect.active {
+            opacity: 1;
+        }
+
+        /* --- Telas de Overlay (Início, Fim de Jogo, Upgrade) --- */
+        .overlay-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            z-index: 100;
+            backdrop-filter: blur(5px);
+        }
+        .overlay-screen h1 {
+            font-size: 3rem;
+            margin-bottom: 20px;
+            text-shadow: 0 0 10px #fff, 0 0 20px #0ff;
+        }
+        .overlay-screen h2 {
+            font-size: 2rem;
+            margin-bottom: 30px;
+        }
+        .overlay-screen p {
+            font-size: 1.2rem;
+            max-width: 500px;
+            margin-bottom: 20px;
+        }
+        .overlay-button {
+            padding: 15px 30px;
+            font-size: 1.2rem;
+            font-family: 'Orbitron', sans-serif;
+            background-color: #1a1a1a;
+            color: #fff;
+            border: 2px solid #0ff;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin: 10px;
+            text-transform: uppercase;
+        }
+        .overlay-button:hover:not(:disabled) {
+            background-color: #0ff;
+            color: #000;
+            box-shadow: 0 0 15px #0ff;
+        }
+        .overlay-button:disabled {
+            border-color: #555;
+            color: #777;
+            cursor: not-allowed;
+        }
+        #game-over-screen { display: none; }
+        #upgrade-panel { display: none; }
+        #upgrade-panel .panel-content {
+            background-color: rgba(20, 20, 20, 0.9);
+            padding: 40px;
+            border-radius: 15px;
+            border: 1px solid #555;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+
+        /* 🆕 --- Início: Estilos para Ranking e Input de Nome --- */
+        #player-name-input {
+            padding: 15px;
+            font-size: 1.2rem;
+            font-family: 'Orbitron', sans-serif;
+            background-color: #111;
+            color: #fff;
+            border: 2px solid #555;
+            border-radius: 8px;
+            text-align: center;
+            margin-bottom: 20px;
+            width: 300px;
+        }
+        #player-name-input:focus {
+            outline: none;
+            border-color: #0ff;
+        }
+        .leaderboard-container {
+            margin-top: 30px;
+            padding: 20px;
+            background-color: rgba(0, 0, 0, 0.4);
+            border: 1px solid #333;
+            border-radius: 10px;
+            width: 80%;
+            max-width: 450px;
+        }
+        .leaderboard-container h2 {
+            font-size: 1.8rem;
+            margin-bottom: 15px;
+            color: #0ff;
+        }
+        .leaderboard-container ol {
+            list-style-type: none;
+            padding: 0;
+            margin: 0;
+        }
+        .leaderboard-container li {
+            font-size: 1.1rem;
+            padding: 8px 0;
+            border-bottom: 1px solid #222;
+        }
+        .leaderboard-container li:last-child {
+            border-bottom: none;
+        }
+        /* 🆕 --- Fim: Estilos para Ranking e Input de Nome --- */
+
+        /* --- HUD do Jogador --- */
+        #player-hud {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            width: 300px;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #444;
+            z-index: 10;
+        }
+        .hud-item { margin-bottom: 8px; }
+        .hud-item-label { font-size: 0.9rem; margin-bottom: 4px; }
+        .progress-bar-container {
+            width: 100%;
+            height: 22px;
+            background-color: #333;
+            border-radius: 5px;
+            border: 1px solid #555;
+            position: relative;
+            overflow: hidden;
+        }
+        .progress-bar {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.3s ease;
+            position: relative;
+        }
+        .progress-bar-text {
+            position: absolute;
+            width: 100%;
+            text-align: center;
+            line-height: 22px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 1px 1px 2px #000;
+        }
+        #hp-bar { background: linear-gradient(90deg, #d32f2f, #f44336); }
+        #hp-bar.low { animation: pulse-red 1s infinite; }
+        #xp-bar { background: linear-gradient(90deg, #673ab7, #9575cd); }
+        #shield-bar { background: linear-gradient(90deg, #fbc02d, #fdd835); }
+        @keyframes pulse-red {
+            0% { box-shadow: 0 0 3px #f44336; }
+            50% { box-shadow: 0 0 10px #ff1111; }
+            100% { box-shadow: 0 0 3px #f44336; }
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+            margin-top: 10px;
+            text-align: center;
+        }
+        .stat-box h3 { font-size: 1rem; margin: 0 0 5px 0; color: #aaa; }
+        .stat-box p { font-size: 1.2rem; margin: 0; }
+        /* --- Buffs --- */
+        #buff-display {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            display: none;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 8px;
+            z-index: 10;
+            text-align: right;
+        }
+        /* --- HUD de Chefes --- */
+        .boss-hud-container {
+            position: absolute;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60%;
+            max-width: 700px;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            z-index: 10;
+        }
+        .boss-hud-item {
+            width: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #555;
+            text-align: center;
+        }
+        #boss-hp-bar { background: linear-gradient(90deg, #c62828, #e53935); }
+        #poderoso-hp-bar { background: linear-gradient(90deg, #6a1b9a, var(--poderoso-color)); }
+        #poderoso-power-bar { background: linear-gradient(90deg, #f9a825, #fdd835); }
+        /* --- HUD de Habilidades (PC) --- */
+        #skills-hud {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: none; /* Starts hidden, shown by script */
+            gap: 15px;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 10px;
+            z-index: 10;
+        }
+        .skill-slot {
+            width: 60px;
+            height: 60px;
+            border: 2px solid #555;
+            border-radius: 8px;
+            background-color: #222;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+        .skill-cooldown {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            color: #fff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 1.8rem;
+            border-radius: 6px;
+        }
+        /* --- Controles Mobile --- */
+        #mobile-controls {
+            display: none; /* Starts hidden */
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 20;
+        }
+        #joystick-container {
+            position: absolute;
+            bottom: 40px;
+            left: 40px;
+            width: 150px;
+            height: 150px;
+            background-color: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            pointer-events: auto;
+        }
+        #joystick-thumb {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 60px;
+            height: 60px;
+            background-color: rgba(255, 255, 255, 0.4);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+        }
+        #mobile-action-buttons {
+            position: absolute;
+            bottom: 40px;
+            right: 40px;
+            display: grid;
+            grid-template-areas: ". e ." "w attack q" ". r .";
+            gap: 15px;
+            pointer-events: auto;
+        }
+        .mobile-button {
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            border: 2px solid #aaa;
+            background-color: rgba(0, 0, 0, 0.6);
+            color: #fff;
+            font-size: 1.5rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        #attack-button { grid-area: attack; width: 90px; height: 90px; background-color: rgba(200, 50, 50, 0.7); }
+        #q-button { grid-area: q; }
+        #w-button { grid-area: w; }
+        #e-button { grid-area: e; }
+        #r-button { grid-area: r; }
+        /* --- Mensagem de Evento --- */
+        #event-message {
+            position: absolute;
+            top: 20%;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(255, 165, 0, 0.9);
+            color: #000;
+            padding: 15px 30px;
+            border-radius: 10px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            z-index: 200;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+            pointer-events: none;
+        }
+        #event-message.show {
+            opacity: 1;
+        }
+    </style>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.module.js"
+        }
+    }
+    </script>
+</head>
+<body>
+    <div id="blind-overlay" class="blind-screen-effect"></div>
+
+    <div id="start-screen" class="overlay-screen">
+        <h1>SOBREVIVÊNCIA 3D</h1>
+        <p>Digite seu nome para entrar no ranking!</p>
+        <input type="text" id="player-name-input" placeholder="Seu nome aqui..." maxlength="15">
+        <p>Escolha sua plataforma para começar</p>
+        <div> 
+            <button id="pc-button" class="overlay-button" disabled>PC</button>
+            <button id="mobile-button" class="overlay-button" disabled>Mobile</button>
+        </div>
+        <div id="leaderboard-start" class="leaderboard-container">
+            <h2>🏆 Ranking - Top 10 🏆</h2>
+            <ol id="leaderboard-list-start">
+                <li>Carregando ranking...</li>
+            </ol>
+        </div>
+        </div>
+    <div id="game-over-screen" class="overlay-screen">
+        <h1>FIM DE JOGO</h1>
+        <div class="stats-grid" style="grid-template-columns: 1fr; gap: 20px; margin-bottom: 20px;">
+            <p>Pontuação Final: <span id="final-score-value">0</span></p>
+            <p>Tempo Sobrevivido: <span id="final-time-value">00:00</span></p>
+            <p>Nível de Colapso: <span id="final-collapse-level">0</span></p>
+        </div>
+        <button id="restart-button" class="overlay-button">REINICIAR</button>
+        <div id="leaderboard-gameover" class="leaderboard-container">
+            <h2>🏆 Ranking - Top 10 🏆</h2>
+            <ol id="leaderboard-list-gameover">
+                <li>Atualizando ranking...</li>
+            </ol>
+        </div>
+        </div>
+    <div id="upgrade-panel" class="overlay-screen">
+        <div class="panel-content">
+            <h2 id="upgrade-title">Evoluir Habilidade</h2>
+            <p id="upgrade-description">Descrição da evolução da habilidade aqui.</p>
+            <div>
+                <button id="upgrade-confirm-button" class="overlay-button">Confirmar</button>
+                <button id="upgrade-skip-button" class="overlay-button">Pular</button>
+            </div> 
+    </div>
+    </div>
+    <div id="event-message"></div>
+    <div id="player-hud" style="display: none;">
+        <div class="hud-item">
+            <div class="hud-item-label">HP</div>
+            <div class="progress-bar-container">
+                <div id="hp-bar" class="progress-bar"></div>
+            </div>
+        </div>
+        <div id="shield-hud-item" class="hud-item" style="display: none;"> 
+             <div class="hud-item-label">Escudo</div>            <div class="progress-bar-container">
+                <div id="shield-bar" class="progress-bar"></div>
+            </div> 
+        </div>
+        <div class="hud-item"> 
+             <div class="hud-item-label">XP</div>
+            <div class="progress-bar-container"> 
+                 <div id="xp-bar" class="progress-bar"></div>
+            </div>
+        </div>
+        <div class="stats-grid"> 
+             <div class="stat-box">
+                <h3>Nível</h3>
+                <p><span id="level-value">1</span></p> 
+            </div>
+            <div class="stat-box">
+                <h3>Passiva</h3> 
+               <p>Nv. <span id="passive-level-value">1</span></p>
+            </div>
+            <div class="stat-box">
+                <h3>Multiplicador</h3>
+                <p><span id="collapse-value">1</span>x</p>
+            </div>
+        </div> 
+          <div class="stats-grid"> 
+             <div class="stat-box" style="grid-column: 1 / -1;"> 
+                 <h3>Pontuação</h3> 
+                 <p id="score-value">0</p>
+            </div>
+        </div>
+        <div class="stats-grid"> 
+             <div class="stat-box" style="grid-column: 1 / -1;">
+                <h3>Tempo</h3>
+                <p id="time-value">00:00</p>
+            </div>
+        </div>
+    </div>
+    <div id="boss-hud" class="boss-hud-container">
+        <div class="boss-hud-item"> 
+           <div id="boss-name-label" class="hud-item-label">Nome do Chefe</div>            <div class="progress-bar-container">
+                <div id="boss-hp-bar" class="progress-bar"></div>
+            </div>
+        </div>
+    </div>
+    <div id="poderoso-hud" class="boss-hud-container">
+        <div class="boss-hud-item">
+            <div class="hud-item-label" style="color: var(--poderoso-color);">O PODEROSO</div> 
+             <div class="progress-bar-container">
+                <div id="poderoso-hp-bar" class="progress-bar">
+                     <div id="poderoso-hp-text" class="progress-bar-text"></div>
+                </div> 
+            </div>
+        </div>
+        <div class="boss-hud-item"> 
+             <div class="progress-bar-container">
+                <div id="poderoso-power-bar" class="progress-bar"> 
+                     <div id="poderoso-power-text" class="progress-bar-text"></div>
+                </div> 
+           </div>
+        </div>
+    </div>
+    <div id="buff-display">
+      <h3 id="buff-name">Buff</h3>
+      <p id="buff-timer">0.0s</p>
+    </div>
+    <div id="skills-hud">
+        <div id="skill-q" class="skill-slot">Q</div>
+        <div id="skill-w" class="skill-slot">W</div>
+        <div id="skill-e" class="skill-slot">E</div>
+        <div id="skill-r" class="skill-slot">R</div>
+    </div>
+    <div id="mobile-controls">
+        <div id="joystick-container"> 
+             <div id="joystick-thumb"></div>
+        </div>
+        <div id="mobile-action-buttons">
+            <div id="attack-button" class="mobile-button">ATK</div>
+            <div id="q-button" class="mobile-button">Q</div>
+            <div id="w-button" class="mobile-button">W</div>
+            <div id="e-button" class="mobile-button">E</div>
+            <div id="r-button" class="mobile-button">R</div>
+        </div>
+    </div>
+    <script type="module">
+        import * as THREE from 'three';
+
+        // Variáveis de cena
+        let scene, camera, renderer, clock, mousePosition, groundPlane;
+        let player, gameManager, uiManager;
+        let isGameOver = false, controlScheme = 'pc', animationFrameId;
+        
+        // 🆕 Início - Variável global para nome do jogador
+        let playerName = '';
+        // 🆕 Fim - Variável global para nome do jogador
+
+        // Arrays de objetos do jogo
+        let enemies = [], playerProjectiles = [], enemyProjectiles = [], orbs = [], particles = [], dynamicEntities = [];
+
+        // Constantes de cor da cena
+        const originalSceneColors = { bg: new THREE.Color(0x100018), fog: new THREE.Color(0x100018) };
+
+        // --- Event Listeners para Iniciar ---
+        document.getElementById('pc-button').addEventListener('click', () => selectPlatform('pc'));
+        document.getElementById('mobile-button').addEventListener('click', () => selectPlatform('mobile'));
+        document.getElementById('restart-button').addEventListener('click', () => window.location.reload());
+
+        function selectPlatform(mode) {
+            // 🆕 Início - Armazena o nome do jogador ao iniciar
+            playerName = document.getElementById('player-name-input').value.trim();
+            if (!playerName) {
+                alert("Por favor, digite seu nome para continuar.");
+                return;
+            }
+            // 🆕 Fim - Armazena o nome do jogador ao iniciar
+
+            controlScheme = mode;
+            document.getElementById('start-screen').style.display = 'none';
+            startGame();
+        }
+
+        function startGame() {
+            document.getElementById('game-over-screen').style.display = 'none';
+            document.getElementById('player-hud').style.display = 'block';
+            document.getElementById('skills-hud').style.display = 'flex';
+            if (controlScheme === 'mobile') document.getElementById('mobile-controls').style.display = 'block';
+            else document.getElementById('mobile-controls').style.display = 'none';
+            init();
+            animate();
+        }
+		
+        // Função Helper para Dano Dinâmico
+        function calculateDynamicDamage(baseDamage, percentMaxHp, playerInstance) {
+            if (!playerInstance || !playerInstance.maxHp) return baseDamage;
+            return baseDamage + (playerInstance.maxHp * percentMaxHp);
+        }
+
+        // --- Classes Principais ---
+        class Player {
+            constructor() {
+                this.isPlayer = true;
+                const geometry = new THREE.BoxGeometry(1, 1, 1);
+                this.originalColor = new THREE.Color(0x4a90e2);
+                const material = new THREE.MeshStandardMaterial({ color: this.originalColor, metalness: 0.3, roughness: 0.5 });
+                this.mesh = new THREE.Mesh(geometry, material);
+                this.mesh.position.set(0, 0.5, 5);
+                this.mesh.castShadow = true;
+				
+                // Status principais
+                this.hitboxRadius = 0.5;
+                this.speed = 5; this.originalSpeed = 5;
+                this.keys = { w: false, a: false, s: false, d: false };
+                this.isAttacking = false; this.moveVector = new THREE.Vector2();
+								
+                // Progressão
+                this.level = 1;
+                this.maxHp = 100; this.hp = this.maxHp; this.xp = 0; this.xpToNextLevel = 10;
+                this.score = 0;
+
+                // Combate
+                this.orbsCollected = 0;
+                this.attackCooldown = 500; this.originalAttackCooldown = 500; this.lastAttackTime = 0;
+                this.isTakingDamage = false; this.attackHitCounter = 0;
+
+                // Habilidades
+                this.skillLevels = { q: 1, w: 1, e: 1, r: 1, passive: 1 };
+                this.skills = {
+                    q: { cooldown: 5000, lastUsed: 0, duration: 200, timer: 0, isDashing: false, dashSpeed: 30 },
+                    w: { cooldown: 8000, lastUsed: 0 },
+                    e: { cooldown: 20000, lastUsed: 0, duration: 10000, timer: 0, isActive: false, shieldHp: 0, maxShieldHp: 0, damageAbsorbed: 0 },
+                    r: { cooldown: 60000, lastUsed: 0, duration: 10000, timer: 0, isActive: false },
+                };
+                this.shieldMesh = null; this.ultimateAura = null;
+				
+                // Buffs & Debuffs
+                this.activeBuff = { type: null, timer: 0, duration: 60000, attackCounter: 0 };
+                this.tempBuff = { type: null, timer: 0, magnitude: 0 };
+                this.timedBuffs = [];
+
+                // Status
+                this.statusEffects = {
+                    stunned: { isActive: false, timer: 0 },
+                    frozen: { isActive: false, timer: 0, visualMesh: null },
+                    bleeding: { isActive: false, timer: 0, damage: 0, lastTick: 0, tickInterval: 1000 },
+                    slowed: { isActive: false, timer: 0, amount: 0},
+                    rooted: { isActive: false, timer: 0 }, 
+                    attackSpeedSlow: { isActive: false, timer: 0, amount: 0 },
+                    disoriented: { isActive: false, timer: 0 },
+                    blind: { isActive: false, timer: 0 },
+                    silenced: { isActive: false, timer: 0 },
+                    marcaDaAlma: { isActive: false, timer: 0, visualMesh: null },
+                    lichKingPrison: { isActive: false, timer: 0, visualMesh: null },
+                    lichKingLifeDrain: { isActive: false, timer: 0, damagePerSecond: 0 },
+                    freezingConeHits: { count: 0, timer: 0 }
+                };
+                this.debuffs = {
+                    attackSpeed: { amount: 1.0, timer: 0 }
+                };
+            }
+
+            getDamage(isAbility = false) {
+                let base = 20 * (this.level * 1.3);
+
+                const coroaLichBuff = this.timedBuffs.find(b => b.type === 'coroa_lich_buff');
+                if (coroaLichBuff && isAbility) {
+                    base *= (1 + coroaLichBuff.effects.ability_damage);
+                }
+
+                if (this.activeBuff.type === 'guerreiro') base *= 1.70;
+                if (this.skills.r.isActive) base *= 4.0;
+                if (this.tempBuff.type === 'damage') base *= this.tempBuff.magnitude;
+                const rainhaBuff = this.timedBuffs.find(b => b.type === 'rainha_buff');
+                if (rainhaBuff && isAbility) base *= rainhaBuff.effects.ability_damage;
+                const plantaBuff = this.timedBuffs.find(b => b.type === 'planta_buff');
+                if (plantaBuff) base *= plantaBuff.effects.damage;
+                const essenciaNegraBuff = this.timedBuffs.find(b => b.type === 'essencia_negra');
+                if (essenciaNegraBuff && isAbility) {
+                    base *= essenciaNegraBuff.effects.magic_damage;
+                }
+                return base;
+            }
+
+            attack() {
+                if (isGameOver || this.statusEffects.stunned.isActive || this.statusEffects.frozen.isActive || this.statusEffects.rooted.isActive) return;
+                
+                let currentAttackCooldown = this.attackCooldown;
+
+                const laminaGeadaBuff = this.timedBuffs.find(b => b.type === 'lamina_geada_buff');
+                if (laminaGeadaBuff) {
+                    currentAttackCooldown *= (1 - laminaGeadaBuff.effects.attack_speed);
+                }
+
+                if (this.statusEffects.attackSpeedSlow.isActive) {
+                    currentAttackCooldown *= (1 + this.statusEffects.attackSpeedSlow.amount);
+                }
+                if (this.skills.r.isActive && this.skillLevels.r >= 3) {
+                    currentAttackCooldown /= 1.5;
+                }
+                if (this.tempBuff.type === 'attackSpeed') {
+                    currentAttackCooldown /= this.tempBuff.magnitude;
+                }
+                const rainhaBuff = this.timedBuffs.find(b => b.type === 'rainha_buff');
+                if (rainhaBuff) {
+                    currentAttackCooldown /= rainhaBuff.effects.attack_speed;
+                }
+                
+                const now = Date.now();
+                if (now > this.lastAttackTime + currentAttackCooldown) {
+                    this.lastAttackTime = now;
+                    if (this.activeBuff.type === 'mago') {
+                        this.activeBuff.attackCounter++;
+                        if (this.activeBuff.attackCounter >= 3) {
+                            this.activeBuff.attackCounter = 0;
+                            createAreaExplosion(this.mesh.position, 8, this.getDamage(true) * 0.5, this);
+                        }
+                    }
+                    if (this.activeBuff.type === 'arqueiro') {
+                        const numProjectiles = 5;
+                        const coneAngle = Math.PI / 8;
+                        const dir = new THREE.Vector3(); this.mesh.getWorldDirection(dir);
+                        for (let i = 0; i < numProjectiles; i++) {
+                            const offset = (i - (numProjectiles - 1) / 2) * (coneAngle / (numProjectiles - 1));
+                            const pDir = dir.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), offset);
+                            const p = new Projectile(this.mesh.position.clone(), pDir, this);
+                            p.isBuffed = 'arqueiro'; playerProjectiles.push(p); scene.add(p.mesh);
+                        }
+                    } else {
+                        const start = this.mesh.position.clone();
+                        const dir = new THREE.Vector3(); this.mesh.getWorldDirection(dir);
+                        const p = new Projectile(start, dir, this);
+                        playerProjectiles.push(p); scene.add(p.mesh);
+                    }
+                }
+            }
+
+            useSkill(key) {
+                if (isGameOver || this.statusEffects.stunned.isActive || this.statusEffects.frozen.isActive || this.statusEffects.silenced.isActive || this.statusEffects.rooted.isActive) return;
+
+                if (this.statusEffects.lichKingPrison.isActive) {
+                    this.takeDamage(250, false);
+                    return;
+                }
+                if (this.statusEffects.marcaDaAlma.isActive) {
+                    this.takeDamage(600, false);
+                    this.applyAttackSpeedSlow(4000, 0.3);
+                    this.clearMarcaDaAlma();
+                }
+
+                const now = Date.now();
+                const skill = this.skills[key];
+
+                let currentCooldown = skill.cooldown;
+                const essenciaNegraBuff = this.timedBuffs.find(b => b.type === 'essencia_negra');
+                if (essenciaNegraBuff) {
+                    currentCooldown *= (1 - essenciaNegraBuff.effects.cooldown_reduction);
+                }
+
+                if (now > skill.lastUsed + currentCooldown) {
+                    skill.lastUsed = now;
+                    if (key === 'q') this.activateDash();
+                    if (key === 'w') this.activateRepel();
+                    if (key === 'e') this.activateShield();
+                    if (key === 'r') this.activateUltimate();
+                }
+            }
+
+            update(dt) {
+                if (isGameOver) return;
+                this.updateStatusEffects(dt);
+                this.updateBuffs(dt);
+                this.updateSkills(dt);
+                this.handleMovement(dt);
+                if (controlScheme === 'pc' && !this.skills.q.isDashing) {
+                    this.handleRotation();
+                    if (this.isAttacking) this.attack();
+                }
+            }
+
+            updateStatusEffects(dt) {
+                const ms = dt * 1000;
+                const now = Date.now();
+				
+                for(const effectName in this.statusEffects) {
+                    const effect = this.statusEffects[effectName];
+                    if(effect.isActive) {
+                        effect.timer -= ms;
+                        if(effect.timer <= 0) {
+                            effect.isActive = false;
+                            if(effectName === 'frozen') this.clearFreeze();
+                            if(effectName === 'slowed') this.speed = this.originalSpeed;
+                            if(effectName === 'attackSpeedSlow') effect.amount = 0;
+                            if(effectName === 'disoriented') document.body.classList.remove('disoriented-screen');
+                            if(effectName === 'blind') uiManager.toggleBlindEffect(false);
+                            if(effectName === 'marcaDaAlma') this.clearMarcaDaAlma();
+                            if(effectName === 'lichKingPrison') this.clearLichKingPrison();
+                            if(effectName === 'freezingConeHits') effect.count = 0;
+                        }
+                    }
+                }
+
+                if (this.statusEffects.bleeding.isActive) {
+                    if (now > this.statusEffects.bleeding.lastTick + this.statusEffects.bleeding.tickInterval) {                
+                        this.statusEffects.bleeding.lastTick = now;
+                        this.takeDamage(this.statusEffects.bleeding.damage, false);
+                    }
+                }
+                if (this.statusEffects.lichKingLifeDrain.isActive) {
+                    this.takeDamage(this.statusEffects.lichKingLifeDrain.damagePerSecond * dt, false);
+                }
+            }
+            
+            takeDamage(amount, fromProjectile = true) {
+                if (isGameOver || (this.skills.r.isActive && !fromProjectile)) return;
+
+                const plantaBuff = this.timedBuffs.find(b => b.type === 'planta_buff');
+                if (plantaBuff) this.heal(amount * plantaBuff.effects.lifesteal);
+                
+                const e = this.skills.e;
+                if (e.isActive && e.shieldHp > 0) {
+                    const damageToShield = Math.min(amount, e.shieldHp);
+                    e.shieldHp -= damageToShield; e.damageAbsorbed += damageToShield;
+                    const remainingDamage = amount - damageToShield;
+                    if (remainingDamage > 0) this.hp -= remainingDamage;
+                } else { this.hp -= amount; }
+                if (fromProjectile) {
+                    this.isTakingDamage = true;
+                    this.mesh.material.color.set(0xff0000);
+                    setTimeout(() => { this.mesh.material.color.set(this.originalColor); this.isTakingDamage = false; }, 150);
+                }
+                if (this.hp <= 0) { this.hp = 0; this.die(); }
+            }
+            
+            handleMovement(dt) {
+                if (this.statusEffects.stunned.isActive || this.statusEffects.frozen.isActive || this.statusEffects.rooted.isActive || this.statusEffects.lichKingPrison.isActive) return;
+                if (this.skills.q.isDashing) { const dir = new THREE.Vector3(); this.mesh.getWorldDirection(dir); this.mesh.position.add(dir.multiplyScalar(this.skills.q.dashSpeed * dt)); return; }
+                const dir = new THREE.Vector3();
+                let moveInputX = 0;
+                let moveInputZ = 0;
+                if (controlScheme === 'pc') {
+                    if (this.keys.w) moveInputZ -= 1; if (this.keys.s) moveInputZ += 1;
+                    if (this.keys.a) moveInputX -= 1; if (this.keys.d) moveInputX += 1;
+                } else {
+                    moveInputX = this.moveVector.x; moveInputZ = this.moveVector.y;
+                }                                     
+                if(this.statusEffects.disoriented.isActive) { dir.x = -moveInputX; dir.z = -moveInputZ; } 
+                else { dir.x = moveInputX; dir.z = moveInputZ; }
+                let currentSpeed = this.speed;
+                if (this.statusEffects.slowed.isActive) { currentSpeed *= (1 - this.statusEffects.slowed.amount); }
+                const plantaBuff = this.timedBuffs.find(b => b.type === 'planta_buff');
+                if (plantaBuff) { currentSpeed *= plantaBuff.effects.move_speed; }
+                if (dir.lengthSq() > 0) { dir.normalize().multiplyScalar(currentSpeed * dt); this.mesh.position.add(dir); if (controlScheme === 'mobile') this.mesh.lookAt(this.mesh.position.clone().add(dir)); }
+            }
+			
+            applyFreeze(duration) {
+                const coroaBuff = this.timedBuffs.find(b => b.type === 'coroa_lich_buff');
+                if(coroaBuff && coroaBuff.effects.immunity_freeze) return;
+
+                const talismaBuff = this.timedBuffs.find(b => b.type === 'talisma_quebrado_buff');
+                if(talismaBuff) duration *= (1 - talismaBuff.effects.freeze_reduction);
+                
+                if(this.statusEffects.frozen.isActive) return;
+
+                this.statusEffects.frozen.isActive = true;
+                this.statusEffects.frozen.timer = Math.max(this.statusEffects.frozen.timer, duration);
+                this.mesh.material.emissive.set(0xADD8E6); 
+            }
+            clearFreeze() {
+                this.statusEffects.frozen.isActive = false;
+                if (!this.skills.r.isActive) {
+                    this.mesh.material.emissive.set(0x000000);
+                }
+            }
+
+            applyLichKingPrison(duration) {
+                const effect = this.statusEffects.lichKingPrison;
+                if(effect.isActive) return;
+                effect.isActive = true;
+                effect.timer = duration;
+                
+                const geo = new THREE.BoxGeometry(1.5, 1.5, 1.5);
+                const mat = new THREE.MeshStandardMaterial({
+                    color: 0xADD8E6, transparent: true, opacity: 0.4,
+                });
+                effect.visualMesh = new THREE.Mesh(geo, mat);
+                effect.visualMesh.position.copy(this.mesh.position);
+                scene.add(effect.visualMesh);
+            }
+            clearLichKingPrison() {
+                const effect = this.statusEffects.lichKingPrison;
+                if(effect.visualMesh) scene.remove(effect.visualMesh);
+                effect.visualMesh = null;
+                effect.isActive = false;
+            }
+
+            levelUp() { this.level++; const overXp = this.xp - this.xpToNextLevel; this.xp = overXp > 0 ? overXp : 0; this.xpToNextLevel = Math.floor(this.xpToNextLevel * 1.8); this.maxHp *= 1.5; this.hp = this.maxHp; if ([5, 10, 15, 20].includes(this.level)) { this.skillLevels.passive++; gameManager.requestUpgrade(this.level); } if(this.xp >= this.xpToNextLevel) this.levelUp(); }
+            upgradeSkill(key) { if (this.skillLevels[key] < 3) this.skillLevels[key]++; }
+            addXp(amount) { this.xp += amount; if (this.xp >= this.xpToNextLevel) this.levelUp(); }
+            collectOrb(orb) { this.orbsCollected++; this.score += 10; const bonusTier = Math.floor(this.orbsCollected / 5); this.addXp(1 + bonusTier); }
+            heal(amount) { this.hp = Math.min(this.maxHp, this.hp + amount); }
+            die() { isGameOver = true; this.mesh.material.color.set(0x555555); gameManager.endGame(); }
+            applyBuff(type) { this.clearBuff(); this.activeBuff.type = type; this.activeBuff.timer = this.activeBuff.duration; if (type === 'guerreiro') { const hpBonus = this.maxHp * 0.20; this.maxHp += hpBonus; this.hp += hpBonus; } }
+            clearBuff() { if (this.activeBuff.type === 'guerreiro') { const originalMaxHp = this.maxHp / 1.20; this.maxHp = originalMaxHp; if (this.hp > this.maxHp) this.hp = this.maxHp; } this.activeBuff.type = null; this.activeBuff.timer = 0; this.activeBuff.attackCounter = 0; }
+            applyRoot(duration) { this.statusEffects.rooted.isActive = true; this.statusEffects.rooted.timer = Math.max(this.statusEffects.rooted.timer, duration); }
+            applyAttackSpeedSlow(duration, amount) { this.statusEffects.attackSpeedSlow.isActive = true; this.statusEffects.attackSpeedSlow.timer = Math.max(this.statusEffects.attackSpeedSlow.timer, duration); this.statusEffects.attackSpeedSlow.amount = Math.max(this.statusEffects.attackSpeedSlow.amount, amount); }
+            applyDisorientation(duration) { if(this.statusEffects.disoriented.isActive) return; this.statusEffects.disoriented.isActive = true; this.statusEffects.disoriented.timer = duration; document.body.classList.add('disoriented-screen'); }
+            applyStun(duration) { this.statusEffects.stunned.isActive = true; this.statusEffects.stunned.timer = Math.max(this.statusEffects.stunned.timer, duration); }
+            applyBleed(duration, damagePerTick) { this.statusEffects.bleeding.isActive = true; this.statusEffects.bleeding.timer = Math.max(this.statusEffects.bleeding.timer, duration); this.statusEffects.bleeding.damage = damagePerTick; this.statusEffects.bleeding.lastTick = Date.now(); }
+            applySlow(duration, amount) { this.statusEffects.slowed.isActive = true; this.statusEffects.slowed.timer = Math.max(this.statusEffects.slowed.timer, duration); this.statusEffects.slowed.amount = amount; }
+            applyAttackSpeedDebuff(duration, amount) { this.debuffs.attackSpeed.amount = amount; this.debuffs.attackSpeed.timer = duration; }
+            applyBlindness(duration) { this.statusEffects.blind.isActive = true; this.statusEffects.blind.timer = Math.max(this.statusEffects.blind.timer, duration); uiManager.toggleBlindEffect(true); }
+            applySilence(duration) { this.statusEffects.silenced.isActive = true; this.statusEffects.silenced.timer = Math.max(this.statusEffects.silenced.timer, duration); }
+            applyMarcaDaAlma(duration) { if (this.statusEffects.marcaDaAlma.isActive) return; const effect = this.statusEffects.marcaDaAlma; effect.isActive = true; effect.timer = duration; const geo = new THREE.RingGeometry(0.7, 0.8, 6); const mat = new THREE.MeshBasicMaterial({ color: 0xff00ff, side: THREE.DoubleSide, transparent: true, opacity: 0.8 }); effect.visualMesh = new THREE.Mesh(geo, mat); effect.visualMesh.rotation.x = Math.PI / 2; effect.visualMesh.position.y = 1.5; this.mesh.add(effect.visualMesh); }
+            clearMarcaDaAlma() { const effect = this.statusEffects.marcaDaAlma; effect.isActive = false; effect.timer = 0; if (effect.visualMesh) { this.mesh.remove(effect.visualMesh); effect.visualMesh = null; } }
+            applyTimedBuff(type, durationSeconds, effects) { const existingBuff = this.timedBuffs.find(b => b.type === type); if (existingBuff) { existingBuff.timer = Math.max(existingBuff.timer, durationSeconds * 1000); } else { this.timedBuffs.push({ type: type, timer: durationSeconds * 1000, effects: effects }); } }
+            applyTemporaryBuff(type, durationSeconds, magnitude) { this.tempBuff.type = type; this.tempBuff.timer = durationSeconds * 1000; this.tempBuff.magnitude = magnitude; }
+            updateSkills(dt) { const ms = dt*1000; const q = this.skills.q; if(q.isDashing){q.timer -= ms; if(q.timer<=0)this.finishDash();} const e=this.skills.e; if(e.isActive){this.speed=this.skillLevels.e>=2?this.originalSpeed*1.2:this.originalSpeed; e.timer-=ms; if(e.timer<=0||e.shieldHp<=0){e.isActive=false; e.shieldHp=0; if(this.shieldMesh)this.shieldMesh.visible=false; this.speed=this.originalSpeed; if(this.skillLevels.e>=3&&e.damageAbsorbed>0){createAreaExplosion(this.mesh.position, 8, e.damageAbsorbed, this, null, false, true);}}else{this.shieldMesh.scale.setScalar(1+Math.sin(clock.getElapsedTime()*10)*0.05); this.shieldMesh.material.opacity=0.2+(e.shieldHp/e.maxShieldHp)*0.3;}} const r=this.skills.r; if(r.isActive){r.timer-=ms; if(r.timer<=0){r.isActive=false; this.mesh.material.emissive.set(0x000000); if(this.ultimateAura)this.ultimateAura.visible=false;}else{enemyProjectiles.forEach(obj=>{if(this.mesh.position.distanceTo(obj.mesh.position)<2)obj.destroy();}); if(this.skillLevels.r>=2){enemies.forEach(en=>{if(en.mesh.position.distanceTo(this.mesh.position)<2.5){en.takeDamage(this.getDamage(true)*0.1*dt,this,false);}}); } this.ultimateAura.rotation.z+=dt*5;}}}
+            finishDash() { this.skills.q.isDashing=false; if(this.skillLevels.q>=3){createAreaExplosion(this.mesh.position,5,this.getDamage(true)*2,this,null,false,true);} const dir=new THREE.Vector3(); this.mesh.getWorldDirection(dir); let cone=this.skillLevels.q>=2?Math.PI/2*1.5:Math.PI/2; const num=8; for(let i=0; i<num; i++){const angle=(i/(num-1)-0.5)*cone; const pDir=dir.clone().applyAxisAngle(new THREE.Vector3(0,1,0),angle); const p=new Projectile(this.mesh.position.clone(),pDir,this); p.damage=this.getDamage(true)*0.2; playerProjectiles.push(p); scene.add(p.mesh);}}
+            activateDash() { const s=this.skills.q; s.isDashing=true; s.timer=s.duration; s.dashSpeed=this.skillLevels.q>=2?30*1.5:30; }
+            activateRepel() { const range=10; if(this.skillLevels.w>=2){enemies.forEach(e=>{if(e.mesh.position.distanceTo(this.mesh.position)<range){const knockbackDir=e.mesh.position.clone().sub(this.mesh.position).normalize(); e.applyKnockback?.(knockbackDir,10);}}); } for(let i=enemyProjectiles.length-1; i>=0; i--){const obj=enemyProjectiles[i]; if(this.mesh.position.distanceTo(obj.mesh.position)<range){obj.direction.negate(); if(this.skillLevels.w>=3){obj.owner=this; obj.mesh.material.color.set(0x00BFFF); obj.mesh.material.emissive.set(0x00BFFF); enemyProjectiles.splice(i,1); playerProjectiles.push(obj);}}}}
+            activateShield() { const s=this.skills.e; s.isActive=true; s.maxShieldHp=this.maxHp*1.5; s.shieldHp=s.maxShieldHp; s.timer=s.duration; s.damageAbsorbed=0; if(!this.shieldMesh){const geo=new THREE.SphereGeometry(0.8,16,16); const mat=new THREE.MeshStandardMaterial({color:0xf1c40f,transparent:true,opacity:0.4}); this.shieldMesh=new THREE.Mesh(geo,mat); this.mesh.add(this.shieldMesh);} this.shieldMesh.visible=true; }
+            activateUltimate() { const s=this.skills.r; s.isActive=true; s.timer=this.skillLevels.r>=3?s.duration*1.5:s.duration; this.mesh.material.emissive.set(0xe74c3c); if(!this.ultimateAura){const geo=new THREE.TorusGeometry(2,0.1,16,100); const mat=new THREE.MeshBasicMaterial({color:0xe74c3c,transparent:true,opacity:0.5}); this.ultimateAura=new THREE.Mesh(geo,mat); this.ultimateAura.rotation.x=Math.PI/2; this.mesh.add(this.ultimateAura);} this.ultimateAura.visible=true; }
+            handleRotation() { const raycaster=new THREE.Raycaster(); raycaster.setFromCamera(mousePosition,camera); const intersection=new THREE.Vector3(); raycaster.ray.intersectPlane(groundPlane,intersection); if(intersection)this.mesh.lookAt(intersection.x,this.mesh.position.y,intersection.z); }
+            updateBuffs(dt) { const ms=dt*1000; if(this.activeBuff.type){this.activeBuff.timer-=ms; if(this.activeBuff.timer<=0)this.clearBuff();} if(this.tempBuff.type){this.tempBuff.timer-=ms; if(this.tempBuff.timer<=0){this.tempBuff.type=null; this.tempBuff.timer=0; this.tempBuff.magnitude=0;}} for(let i=this.timedBuffs.length-1; i>=0; i--){this.timedBuffs[i].timer-=ms; if(this.timedBuffs[i].timer<=0){this.timedBuffs.splice(i,1);}} if(this.debuffs.attackSpeed.timer>0){this.debuffs.attackSpeed.timer-=ms; if(this.debuffs.attackSpeed.timer<=0){this.debuffs.attackSpeed.amount=1.0;}}}
+        }
+        class Enemy {
+            constructor(position) {
+                this.status = { slowTimer: 0, isMarked: false, knockback: null };
+                this.isInvulnerable = false;
+            }
+            applyGlobalBuff(multiplier) {
+                if (this.isDestroyed) return;
+                const ratio = this.hp / this.maxHp;
+                this.maxHp *= multiplier;
+                this.hp = this.maxHp * ratio;
+                if (this.damage) this.damage *= multiplier;
+            }
+            applySlow(duration, amount = 0.5) { this.status.slowTimer = duration; this.speed = this.originalSpeed * amount; }
+            applyKnockback(direction, force) { this.status.knockback = { dir: direction, force: force }; }
+
+            takeDamage(amount, instigator, countsForPassive = true) { 
+                if (this.isDestroyed || this.isInvulnerable) return;
+                
+                if (instigator?.isPlayer) {
+                    const essenciaNegraBuff = instigator.timedBuffs.find(b => b.type === 'essencia_negra');
+                    if (essenciaNegraBuff) instigator.heal(amount * essenciaNegraBuff.effects.lifesteal);
+
+                    const laminaGeadaBuff = instigator.timedBuffs.find(b => b.type === 'lamina_geada_buff');
+                    if(laminaGeadaBuff) {
+                        amount += laminaGeadaBuff.effects.bonus_damage;
+                        this.applySlow(500, 0.5);
+                    }
+                }
+
+                if (this.isRainha && this.habilidades.escudoDasAlmas.isActive) {
+                    this.habilidades.escudoDasAlmas.isActive = false;
+                    this.speed = this.originalSpeed;
+                    if (this.shieldAura) this.shieldAura.visible = false;
+                    createExplosion(this.mesh.position, 15, new THREE.Color(0x8800ff));
+                    return;
+                }
+                if (this.status.isMarked) { amount *= 1.5; this.status.isMarked = false; }
+                
+                this.hp -= amount;
+                
+                if (this.hp <= 0) {
+                    this.destroy(instigator);
+                }
+                
+                if(instigator?.isPlayer && countsForPassive){
+                    instigator.attackHitCounter++;
+                    if (instigator.attackHitCounter >= 3) {
+                        instigator.attackHitCounter = 0;
+                        let radius = instigator.skillLevels.passive >= 3 ? 3 * 1.3 : 3;
+                        createAreaExplosion(this.mesh.position, radius, instigator.getDamage(true), instigator, this, false, true);
+                    }
+                }
+            }
+            updateStatus(dt) {
+                if (this.status.slowTimer > 0) { this.status.slowTimer -= dt * 1000; if (this.status.slowTimer <= 0) this.speed = this.originalSpeed; }
+                if (this.status.knockback) {
+                    this.mesh.position.add(this.status.knockback.dir.clone().multiplyScalar(this.status.knockback.force * dt));
+                    this.status.knockback.force *= 0.95;
+                    if (this.status.knockback.force < 1) this.status.knockback = null;
+                    return true;
+                }
+                return false;
+            }
+
+            destroy(instigator) {
+                // Lógica padrão de destruição
+                this.isDestroyed = true;
+                if(this.mesh.parent) scene.remove(this.mesh);
+                removeFromArray(enemies, this);
+
+                // Passiva do Lich King: Domínio da Morte
+                const lichKing = enemies.find(e => e.isLichKing && !e.isDestroyed);
+                if (lichKing && lichKing.mesh.position.distanceTo(this.mesh.position) < 6) {
+                    lichKing.addToRevivalQueue(this);
+                }
+
+                // Efeito do item: Fragmento da Morte
+                if (instigator?.isPlayer) {
+                    const fragmentoBuff = instigator.timedBuffs.find(b => b.type === 'fragmento_morte_buff');
+                    if (fragmentoBuff && Math.random() < fragmentoBuff.effects.chance) {
+                        createAreaExplosion(this.mesh.position, 3, 100, instigator, null, true, true);
+                    }
+                }
+            }
+        }
+        
+        // --- INÍCIO DA REORDENAÇÃO DAS CLASSES DE INIMIGOS ---
+
+        class PurpleCube extends Enemy { constructor(position) { super(position); const baseHp = 100; const baseDamage = 10; this.maxHp = baseHp * gameManager.globalMultiplier; this.hp = this.maxHp; this.damage = baseDamage * gameManager.globalMultiplier; this.xp = 50; this.speed = 2.5; this.originalSpeed = 2.5; this.attackRange = 12; this.attackCooldown = 2000; this.lastAttackTime = 0; this.score = 50; const geo = new THREE.BoxGeometry(0.8, 0.8, 0.8); const mat = new THREE.MeshStandardMaterial({ color: 0x9b59b6 }); this.mesh = new THREE.Mesh(geo, mat); this.mesh.position.copy(position); this.mesh.position.y = 0.4; this.mesh.castShadow = true; this.hitboxRadius = 0.6; } scaleStats(multiplier) { this.applyGlobalBuff(multiplier); } destroy(instigator) { createExplosion(this.mesh.position, 10, this.mesh.material.color); if (instigator?.isPlayer) { instigator.addXp(this.xp); instigator.score += this.score; } super.destroy(instigator); } attack(target) { const now = Date.now(); if (now > this.lastAttackTime + this.attackCooldown) { this.lastAttackTime = now; const dir = target.mesh.position.clone().sub(this.mesh.position).normalize(); const p = new Projectile(this.mesh.position.clone(), dir, this, target); enemyProjectiles.push(p); scene.add(p.mesh); } } update(dt, player) { if (isGameOver || this.isDestroyed || this.updateStatus(dt)) return; const dist = this.mesh.position.distanceTo(player.mesh.position); if (dist > this.attackRange) { const dir = player.mesh.position.clone().sub(this.mesh.position).normalize(); this.mesh.position.add(dir.multiplyScalar(this.speed * dt)); } else { this.attack(player); } this.mesh.lookAt(player.mesh.position.x, this.mesh.position.y, player.mesh.position.z); } }
+        
+        class RedCone extends Enemy { constructor(position) { super(position); this.maxHp = 200 * gameManager.globalMultiplier; this.hp = this.maxHp; this.damage = 5 * gameManager.globalMultiplier; this.xp = 100; this.speed = 0; this.originalSpeed = 0; this.attackRange = 20; this.attackCooldown = 2000; this.lastAttackTime = 0; this.score = 75; this.projectileCount = 1; this.lastProjectileIncreaseTime = 0; const geo = new THREE.ConeGeometry(0.7, 1.5, 16); const mat = new THREE.MeshStandardMaterial({ color: 0xe74c3c }); this.mesh = new THREE.Mesh(geo, mat); this.mesh.position.copy(position); this.mesh.position.y = 0.75; this.mesh.castShadow = true; this.hitboxRadius = 0.7; } scaleStats(multiplier) { this.applyGlobalBuff(multiplier); } destroy(instigator) { createExplosion(this.mesh.position, 15, this.mesh.material.color); if (instigator?.isPlayer) { instigator.addXp(this.xp); instigator.score += this.score; } super.destroy(instigator); } attack(target) { const now = Date.now(); if (now > this.lastAttackTime + this.attackCooldown) { this.lastAttackTime = now; const baseDir = target.mesh.position.clone().sub(this.mesh.position).normalize(); const coneAngle = Math.PI / 6; for (let i = 0; i < this.projectileCount; i++) { const offset = (this.projectileCount > 1) ? (i - (this.projectileCount - 1) / 2) * (coneAngle / (this.projectileCount - 1)) : 0; const dir = baseDir.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), offset); const p = new Projectile(this.mesh.position.clone(), dir, this, target); enemyProjectiles.push(p); scene.add(p.mesh); } } } update(dt, player) { if (isGameOver || this.isDestroyed || this.updateStatus(dt)) return; this.lastProjectileIncreaseTime += dt; if (this.lastProjectileIncreaseTime > 5) { this.lastProjectileIncreaseTime = 0; this.projectileCount++; } this.mesh.lookAt(player.mesh.position.x, this.mesh.position.y, player.mesh.position.z); if (this.mesh.position.distanceTo(player.mesh.position) <= this.attackRange) this.attack(player); } }
+        
+        class DefenderEnemy extends Enemy { constructor(position, coneToDefend) { super(position); this.coneToDefend = coneToDefend; this.defendRadius = 15; this.leashRadius = 25; this.isDefender = true; } update(dt, player) { if (isGameOver || this.isDestroyed || this.updateStatus(dt)) return; if (this.coneToDefend && !this.coneToDefend.isDestroyed) { const distanceToCone = this.mesh.position.distanceTo(this.coneToDefend.mesh.position); if (distanceToCone > this.leashRadius) { const direction = this.coneToDefend.mesh.position.clone().sub(this.mesh.position).normalize(); this.mesh.position.add(direction.multiplyScalar(this.speed * dt)); this.mesh.lookAt(this.coneToDefend.mesh.position); return; } if(player.mesh.position.distanceTo(this.coneToDefend.mesh.position) < this.defendRadius) { this.runAI(dt, player); } else { const patrolDirection = this.coneToDefend.mesh.position.clone().sub(this.mesh.position).normalize(); this.mesh.position.add(patrolDirection.multiplyScalar(this.speed * 0.5 * dt)); this.mesh.lookAt(player.mesh.position); } } else { this.coneToDefend = null; this.runAI(dt, player); } } runAI(dt, player) { const dir = player.mesh.position.clone().sub(this.mesh.position).normalize(); this.mesh.position.add(dir.multiplyScalar(this.speed * dt)); this.mesh.lookAt(player.mesh.position); } destroy(instigator) { createExplosion(this.mesh.position, 20, this.mesh.material.color); if (instigator?.isPlayer) { instigator.addXp(this.xp || 150); instigator.score += this.score || 500; } super.destroy(instigator); } } 
+        
+        class BruxaDoGelo extends DefenderEnemy { constructor(position, coneToDefend) { super(position, coneToDefend); this.name = "Bruxa do Gelo"; const geometry = new THREE.CylinderGeometry(0.2, 1, 2.5, 6); const material = new THREE.MeshStandardMaterial({ color: 0x81d4fa, transparent: true, opacity: 0.9, metalness: 0.7, roughness: 0.2 }); this.mesh = new THREE.Mesh(geometry, material); this.mesh.position.copy(position); this.mesh.castShadow = true; this.maxHp = 1000 * gameManager.globalMultiplier; this.hp = this.maxHp; this.speed = 2.0; this.originalSpeed = 2.0; this.xp = 400; this.score = 2000; this.hitboxRadius = 1.0; this.habilidades = { h1: { cooldown: 8000, lastUsed: 0 }, h2: { cooldown: 10000, lastUsed: 0 }, h3: { cooldown: 20000, lastUsed: 0 } }; this.prisaoGlacialTimer = 0; } takeDamage(amount, instigator) { if(this.isInvulnerable) return; super.takeDamage(amount, instigator); } runAI(dt, player) { const now = Date.now(); const dist = this.mesh.position.distanceTo(player.mesh.position); if(dist < 4) { let slowAmount = 0.15; if(player.hp / player.maxHp < 0.3) slowAmount = 0.30; player.applyAttackSpeedSlow(500, slowAmount); } if(this.prisaoGlacialTimer > 0) { this.prisaoGlacialTimer -= dt * 1000; if(this.prisaoGlacialTimer <= 0) { this.isInvulnerable = false; this.mesh.material.opacity = 0.9; const damage = calculateDynamicDamage(40, 0.04, player); createAreaExplosion(this.mesh.position, 4, damage, this); if (this.mesh.position.distanceTo(player.mesh.position) < 4) { player.takeDamage(damage, false); } } return; } if (now > this.habilidades.h3.lastUsed + this.habilidades.h3.cooldown && dist < 10) { this.habilidades.h3.lastUsed = now; this.isInvulnerable = true; this.prisaoGlacialTimer = 2000; this.mesh.material.opacity = 0.5; } else if (now > this.habilidades.h2.lastUsed + this.habilidades.h2.cooldown && dist < 18) { this.habilidades.h2.lastUsed = now; const damage = calculateDynamicDamage(30, 0.025, player); const p = new Projectile(this.mesh.position.clone(), player.mesh.position.clone().sub(this.mesh.position).normalize(), this, player); p.damage = damage; p.specialEffect = 'lançaGelo'; enemyProjectiles.push(p); scene.add(p.mesh); } else if (now > this.habilidades.h1.lastUsed + this.habilidades.h1.cooldown && dist < 8) { this.habilidades.h1.lastUsed = now; const damage = calculateDynamicDamage(25, 0.02, player); createAreaExplosion(this.mesh.position, 3, damage, this); if (this.mesh.position.distanceTo(player.mesh.position) < 3) { player.takeDamage(damage, false); player.applyFreeze(1000); } } if (dist > 5) { const dir = player.mesh.position.clone().sub(this.mesh.position).normalize(); this.mesh.position.add(dir.multiplyScalar(this.speed * dt)); } this.mesh.lookAt(player.mesh.position.x, this.mesh.position.y, player.mesh.position.z); } }
+        
+        class CloneIlusorio extends Enemy { constructor(position, owner) { super(position); this.owner = owner; const geo = new THREE.BoxGeometry(1.5, 1.5, 1.5); const mat = new THREE.MeshStandardMaterial({ color: 0xd095e0, transparent: true, opacity: 0.6 }); this.mesh = new THREE.Mesh(geo, mat); this.mesh.position.copy(position); this.lifetime = 3000; this.maxHp = 1; this.hp = 1; this.isClone = true; } takeDamage(amount, instigator) { if (instigator?.isPlayer) { instigator.applyDisorientation(1000); } this.destroy(instigator); } update(dt) { this.lifetime -= dt * 1000; if(this.lifetime <= 0) this.destroy(); } destroy(instigator) { super.destroy(instigator); } }
+
+        class MestraDaIlusao extends DefenderEnemy { constructor(position, coneToDefend) { super(position, coneToDefend); this.name = "Mestra da Ilusão"; const geo = new THREE.BoxGeometry(1.5, 1.5, 1.5); const mat = new THREE.MeshStandardMaterial({ color: 0xab47bc, metalness: 0.6, roughness: 0.4 }); this.mesh = new THREE.Mesh(geo, mat); this.mesh.position.copy(position); this.mesh.castShadow = true; this.layers = []; for(let i=0; i<3; i++) { const layerGeo = new THREE.BoxGeometry(1.6 + i * 0.4, 1.6 + i * 0.4, 1.6 + i * 0.4); const layerMat = new THREE.MeshBasicMaterial({ color: 0xd095e0, wireframe: true, transparent: true, opacity: 0.4 }); const layer = new THREE.Mesh(layerGeo, layerMat); this.layers.push(layer); this.mesh.add(layer); } this.maxHp = 850 * gameManager.globalMultiplier; this.hp = this.maxHp; this.speed = 2.5; this.originalSpeed = 2.5; this.xp = 380; this.score = 2200; this.hitboxRadius = 1.0; this.damageReduction = 0; this.habilidades = { h1: { cooldown: 6000, lastUsed: 0, state: 'idle', startPos: null, returnTimer: 0 }, h2: { cooldown: 10000, lastUsed: 0, state: 'idle', linkTimer: 0, target: null, line: null }, h3: { cooldown: 12000, lastUsed: 0 } }; } takeDamage(amount, instigator) { const now = Date.now(); if(now > this.habilidades.h3.lastUsed + this.habilidades.h3.cooldown) { this.habilidades.h3.lastUsed = now; this.gerarClone(instigator); return; } const finalDamage = amount * (1 - this.damageReduction); super.takeDamage(finalDamage, instigator); } gerarClone(instigator) { const clonePos = this.mesh.position.clone().add(new THREE.Vector3(1,0,1)); const clone = new CloneIlusorio(clonePos, this); enemies.push(clone); scene.add(clone.mesh); this.mesh.position.add(new THREE.Vector3(Math.random()*4-2, 0, Math.random()*4-2)); } runAI(dt, player) { const now = Date.now(); const dist = this.mesh.position.distanceTo(player.mesh.position); this.damageReduction = (this.hp >= this.maxHp) ? 0.25 : 0; this.speed = (this.hp / this.maxHp < 0.5) ? this.originalSpeed * 1.25 : this.originalSpeed; this.layers.forEach((layer, i) => { layer.rotation.x += dt * (i + 1) * 0.3; layer.rotation.y += dt * (i + 1) * 0.4; }); const h1 = this.habilidades.h1; if(h1.state !== 'idle') { if(h1.state === 'dashing') { h1.returnTimer -= dt * 1000; if(h1.returnTimer <= 0) { h1.state = 'returning'; const damage = calculateDynamicDamage(20, 0.03, player); createAreaExplosion(this.mesh.position, 1.5, damage, this); } } else if (h1.state === 'returning') { const returnDir = h1.startPos.clone().sub(this.mesh.position); if(returnDir.length() < 1) { this.mesh.position.copy(h1.startPos); const damage = calculateDynamicDamage(20, 0.03, player); createAreaExplosion(this.mesh.position, 1.5, damage, this); h1.state = 'idle'; } else { this.mesh.position.add(returnDir.normalize().multiplyScalar(this.speed * 2 * dt)); } } return; } const h2 = this.habilidades.h2; if(h2.state === 'linking') { const distToTarget = this.mesh.position.distanceTo(player.mesh.position); if(distToTarget > 15) { h2.state = 'idle'; scene.remove(h2.line); h2.line = null; } else { h2.linkTimer += dt * 1000; h2.line.geometry.setFromPoints([this.mesh.position, player.mesh.position]); if(h2.linkTimer >= 2000) { const damage = calculateDynamicDamage(15, 0.015, player); player.takeDamage(damage, this); player.applyRoot(2000); h2.state = 'idle'; scene.remove(h2.line); h2.line = null; } } } if (now > h2.lastUsed + h2.cooldown && dist < 12 && h2.state === 'idle') { h2.lastUsed = now; h2.state = 'linking'; h2.linkTimer = 0; const points = [this.mesh.position, player.mesh.position]; const geo = new THREE.BufferGeometry().setFromPoints(points); const mat = new THREE.LineBasicMaterial({ color: 0xea80fc, transparent: true, opacity: 0.7 }); h2.line = new THREE.Line(geo, mat); scene.add(h2.line); } else if (now > h1.lastUsed + h1.cooldown && dist < 10 && h1.state === 'idle') { h1.lastUsed = now; h1.state = 'dashing'; h1.returnTimer = 2000; h1.startPos = this.mesh.position.clone(); const dashDir = player.mesh.position.clone().sub(this.mesh.position).normalize(); this.mesh.position.add(dashDir.multiplyScalar(5)); } const dir = player.mesh.position.clone().sub(this.mesh.position).normalize(); this.mesh.position.add(dir.multiplyScalar(this.speed * dt)); this.mesh.lookAt(player.mesh.position.x, this.mesh.position.y, player.mesh.position.z); } } 
+        
+        class Mine extends Enemy { constructor(position, damage) { super(position); this.damage = damage; const geo = new THREE.CylinderGeometry(0.4, 0.4, 0.1, 8); const mat = new THREE.MeshStandardMaterial({ color: 0xd84315 }); this.mesh = new THREE.Mesh(geo, mat); this.mesh.position.copy(position); this.lifetime = 10000; this.hitboxRadius = 0.5; this.maxHp = 1; this.hp = 1; } update(dt, player) { this.lifetime -= dt * 1000; if(this.lifetime <= 0) { this.destroy(); return; } if(player.mesh.position.distanceTo(this.mesh.position) < this.hitboxRadius + player.hitboxRadius) { player.takeDamage(this.damage, false); this.destroy(); } } destroy() { createExplosion(this.mesh.position, 5, this.mesh.material.color); super.destroy(); } }
+        
+        class BombardeiroInsano extends DefenderEnemy { constructor(position, coneToDefend) { super(position, coneToDefend); this.name = "Bombardeiro Insano"; const geo = new THREE.SphereGeometry(1.2, 16, 16); const mat = new THREE.MeshStandardMaterial({ color: 0xffa726, emissive: 0xf57c00, metalness: 0.4, roughness: 0.6 }); this.mesh = new THREE.Mesh(geo, mat); this.mesh.position.copy(position); this.mesh.castShadow = true; this.maxHp = 1200 * gameManager.globalMultiplier; this.hp = this.maxHp; this.speed = 1.8; this.originalSpeed = 1.8; this.xp = 450; this.score = 2500; this.hitboxRadius = 1.2; this.bombCounter = 0; this.habilidades = { h1: { cooldown: 4000, lastUsed: 0 }, h2: { cooldown: 8000, lastUsed: 0 }, h3: { cooldown: 15000, lastUsed: 0 } }; } runAI(dt, player) { const now = Date.now(); const dist = this.mesh.position.distanceTo(player.mesh.position); if (now > this.habilidades.h3.lastUsed + this.habilidades.h3.cooldown && dist < 20) { this.habilidades.h3.lastUsed = now; const damage = calculateDynamicDamage(70, 0.06, player); const indicatorGeo = new THREE.CircleGeometry(4, 32); const indicatorMat = new THREE.MeshBasicMaterial({ color: 0xff5722, transparent: true, opacity: 0.5 }); const indicator = new THREE.Mesh(indicatorGeo, indicatorMat); indicator.position.copy(player.mesh.position); indicator.position.y = 0.01; indicator.rotation.x = -Math.PI / 2; scene.add(indicator); setTimeout(() => { scene.remove(indicator); createAreaExplosion(indicator.position, 4.5, damage, this); if(player.mesh.position.distanceTo(indicator.position) < 4.5) { player.takeDamage(damage, false); } }, 1500); } else if (now > this.habilidades.h2.lastUsed + this.habilidades.h2.cooldown && dist < 15) { this.habilidades.h2.lastUsed = now; const mineDamage = calculateDynamicDamage(15, 0.02, player); for (let i = 0; i < 4; i++) { const angle = Math.random() * Math.PI * 2; const radius = 2 + Math.random() * 2; const pos = this.mesh.position.clone().add(new THREE.Vector3(Math.cos(angle) * radius, 0, Math.sin(angle) * radius)); const mine = new Mine(pos, mineDamage); enemies.push(mine); scene.add(mine.mesh); } } else if (now > this.habilidades.h1.lastUsed + this.habilidades.h1.cooldown && dist < 18) { this.habilidades.h1.lastUsed = now; this.bombCounter++; let damage = calculateDynamicDamage(20, 0.04, player); if(this.bombCounter % 4 === 0) { damage *= 2; } const p = new Projectile(this.mesh.position.clone(), player.mesh.position.clone().sub(this.mesh.position).normalize(), this, player); p.damage = damage; p.specialEffect = 'bouncingBomb'; p.bounces = 2; p.velocity = p.direction.clone().multiplyScalar(p.speed); p.velocity.y = 5; enemyProjectiles.push(p); scene.add(p.mesh); } if (dist > 10) { const dir = player.mesh.position.clone().sub(this.mesh.position).normalize(); this.mesh.position.add(dir.multiplyScalar(this.speed * dt)); } this.mesh.lookAt(player.mesh.position.x, this.mesh.position.y, player.mesh.position.z); } destroy(instigator) { const damage = calculateDynamicDamage(50, 0.03, player); createAreaExplosion(this.mesh.position, 5, damage, this); if(this.mesh.position.distanceTo(player.mesh.position) < 5) { player.takeDamage(damage, false); } super.destroy(instigator); } } 
+        
+        class AlmaAmaldicoada extends Enemy {
+            constructor(position, owner) {
+                super(position);
+                this.owner = owner;
+                this.name = "Alma Amaldiçoada";
+                this.maxHp = 500; this.hp = this.maxHp; this.speed = 3; this.originalSpeed = 3;
+                this.hitboxRadius = 0.5; this.isSoul = true;
+                const geo = new THREE.SphereGeometry(this.hitboxRadius, 16, 16);
+                const mat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, emissive: 0xff0000, emissiveIntensity: 0.8 });
+                this.mesh = new THREE.Mesh(geo, mat); this.mesh.position.copy(position);
+            }
+            update(dt) {
+                if (this.isDestroyed) return;
+                if (this.owner && !this.owner.isDestroyed) {
+                    const angle = clock.getElapsedTime() * this.speed * 0.5 + this.mesh.id * 2;
+                    const radius = 4;
+                    const offset = new THREE.Vector3(Math.cos(angle) * radius, Math.sin(angle * 2) * 1.5, Math.sin(angle) * radius);
+                    const targetPos = this.owner.mesh.position.clone().add(offset);
+                    this.mesh.position.lerp(targetPos, 0.1);
+                }
+            }
+            destroy(instigator) {
+                createExplosion(this.mesh.position, 10, this.mesh.material.color);
+                if (this.owner) { this.owner.onSoulDestroyed(this); }
+                super.destroy(instigator);
+            }
+        }
+        
+        class MarcaDaAlmaEternaZone {
+            constructor(position) {
+                this.radius = 4; this.duration = 15000; this.lifeTimer = this.duration;
+                this.damagePerSecond = 300; this.lastDamageTick = 0; this.damageInterval = 1000;
+                const geo = new THREE.CircleGeometry(this.radius, 32);
+                const mat = new THREE.MeshBasicMaterial({ color: 0x4a004a, transparent: true, opacity: 0.5 });
+                this.mesh = new THREE.Mesh(geo, mat);
+                this.mesh.position.copy(position); this.mesh.position.y = 0.01; this.mesh.rotation.x = -Math.PI / 2;
+                const ringGeo = new THREE.RingGeometry(this.radius * 0.95, this.radius, 64);
+                const ringMat = new THREE.MeshBasicMaterial({ color: 0xff00ff, transparent: true, opacity: 0.8 });
+                this.pulseRing = new THREE.Mesh(ringGeo, ringMat); this.mesh.add(this.pulseRing);
+            }
+            update(dt, player) {
+                this.lifeTimer -= dt * 1000; this.lastDamageTick -= dt * 1000;
+                const pulseScale = 1 + Math.sin(clock.getElapsedTime() * 5) * 0.05;
+                this.pulseRing.scale.set(pulseScale, pulseScale, 1);
+                this.mesh.material.opacity = 0.5 * (this.lifeTimer / this.duration);
+                if (this.lifeTimer <= 0) { this.destroy(); return; }
+                const dist = this.mesh.position.distanceTo(player.mesh.position);
+                if (dist < this.radius) {
+                    player.applySilence(500);
+                    if (this.lastDamageTick <= 0) { player.takeDamage(this.damagePerSecond, false); this.lastDamageTick = this.damageInterval; }
+                }
+            }
+            destroy() { if (this.mesh.parent) scene.remove(this.mesh); removeFromArray(dynamicEntities, this); }
+        }
+
+        class FeiticeiroImortalDasTrevas extends Enemy {
+            constructor(position, player) {
+                super(position);
+                this.name = "Lord Vouldemord"; this.isFeiticeiroImortal = true;
+                this.maxHp = 12000 + (300 * player.level); this.hp = this.maxHp;
+                this.baseDamage = 180 + (player.maxHp * 0.07);
+                this.speed = 1.2; this.originalSpeed = 1.2; this.xp = 22000; this.score = 10000;
+                this.hitboxRadius = 1.2; this.idealDistance = 18; this.retreatDistance = 12;
+                this.mesh = new THREE.Group(); this.mesh.position.copy(position);
+                this.setupVisuals();
+                this.souls = []; this.isImmortal = false; this.teleportTimer = 15000;
+                this.habilidades = {
+                    explosao: { cooldown: 6000, lastUsed: 0 }, marca: { cooldown: 12000, lastUsed: 0 },
+                    barreira: { cooldown: 15000, lastUsed: 0, isActive: false, shieldHp: 0, shieldMaxHp: 1000, duration: 4000, timer: 0, visual: null },
+                    ritual: { cooldown: 30000, lastUsed: 0 },
+                };
+            }
+            setupVisuals() {
+                const bodyGeo = new THREE.CylinderGeometry(0.8, 0.6, 3.5, 12);
+                const bodyMat = new THREE.MeshStandardMaterial({ color: 0x101010, roughness: 0.8 });
+                this.bodyMesh = new THREE.Mesh(bodyGeo, bodyMat); this.bodyMesh.position.y = 1.75; this.mesh.add(this.bodyMesh);
+                const headGeo = new THREE.IcosahedronGeometry(1, 0);
+                const headMat = new THREE.MeshStandardMaterial({ color: 0x202020 });
+                const head = new THREE.Mesh(headGeo, headMat); head.scale.y = 0.5; head.position.y = 3.8; this.mesh.add(head);
+                const eyeGeo = new THREE.ConeGeometry(0.2, 0.4, 3);
+                const eyeMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+                const eye1 = new THREE.Mesh(eyeGeo, eyeMat); eye1.position.set(-0.4, 3.8, 0.6); eye1.rotation.x = Math.PI / 2;
+                const eye2 = eye1.clone(); eye2.position.x = 0.4; this.mesh.add(eye1, eye2);
+                this.capeParts = [];
+                const capeMat = new THREE.MeshStandardMaterial({ color: 0x050505, side: THREE.DoubleSide });
+                for (let i = 0; i < 6; i++) {
+                    const shape = new THREE.Shape(); shape.moveTo(0,0); shape.lineTo(1,-0.2); shape.lineTo(0.8,-2); shape.lineTo(-0.2,-1.8); shape.lineTo(0,0);
+                    const partGeo = new THREE.ShapeGeometry(shape);
+                    const part = new THREE.Mesh(partGeo, capeMat); part.position.y = 3; this.capeParts.push(part); this.mesh.add(part);
+                }
+            }
+            getDamage(damageType) {
+                switch (damageType) {
+                    case 'explosao': return 400 + (player.maxHp * 0.05);
+                    default: return this.baseDamage;
+                }
+            }
+            takeDamage(amount, instigator) {
+                if (this.isDestroyed) return;
+                const barreira = this.habilidades.barreira;
+                if (barreira.isActive && barreira.shieldHp > 0) {
+                    const damageToShield = Math.min(amount, barreira.shieldHp);
+                    barreira.shieldHp -= damageToShield;
+                    const reflectedDamage = amount * 0.40;
+                    const p = new Projectile(this.mesh.position.clone(), instigator.mesh.position.clone().sub(this.mesh.position).normalize(), this, instigator);
+                    p.damage = reflectedDamage; p.mesh.material.color.set(0x200020); p.mesh.material.emissive.set(0x200020);
+                    p.specialEffect = 'reflectedOrb'; enemyProjectiles.push(p); scene.add(p.mesh);
+                    const remainingDamage = amount - damageToShield;
+                    if (barreira.shieldHp <= 0) this.deactivateBarrier();
+                    if (remainingDamage <= 0) return;
+                    amount = remainingDamage;
+                }
+                if (this.isImmortal) return;
+                super.takeDamage(amount, instigator);
+            }
+            update(dt, player) {
+                if (this.isDestroyed) return;
+                const now = Date.now();
+                const dist = this.mesh.position.distanceTo(player.mesh.position);
+                this.bodyMesh.position.y = 1.75 + Math.sin(clock.getElapsedTime() * 2) * 0.1;
+                this.capeParts.forEach((part, i) => { const angle = (now / 1000) * 0.5 + i * (Math.PI / 3); part.position.x = Math.cos(angle) * 1.5; part.position.z = Math.sin(angle) * 1.5; part.rotation.y = -angle; part.rotation.z = Math.sin(angle * 2) * 0.2; });
+                this.teleportTimer -= dt * 1000;
+                if(this.teleportTimer <= 0) { this.teleport(); this.teleportTimer = 15000; }
+                const barreira = this.habilidades.barreira;
+                if (barreira.isActive) {
+                    barreira.timer -= dt * 1000;
+                    if(barreira.visual) { barreira.visual.scale.setScalar(1 + Math.sin(now/200) * 0.05); barreira.visual.material.opacity = (barreira.shieldHp / barreira.shieldMaxHp) * 0.4; }
+                    if (barreira.timer <= 0) this.deactivateBarrier();
+                }
+                let moveDir = new THREE.Vector3(0, 0, 0);
+                if (dist < this.retreatDistance) { moveDir = this.mesh.position.clone().sub(player.mesh.position).normalize();
+                } else if (dist > this.idealDistance) { moveDir = player.mesh.position.clone().sub(this.mesh.position).normalize(); }
+                moveDir.y = 0; 
+                this.mesh.position.add(moveDir.multiplyScalar(this.speed * dt));
+                this.mesh.lookAt(player.mesh.position.x, this.mesh.position.y, player.mesh.position.z);
+                if (now > this.habilidades.ritual.lastUsed + this.habilidades.ritual.cooldown && this.souls.length === 0) { this.habilidades.ritual.lastUsed = now; this.useRitual(); }
+                if (now > barreira.lastUsed + barreira.cooldown && this.hp / this.maxHp < 0.5 && !barreira.isActive) { barreira.lastUsed = now; this.useBarrier(); }
+                if (now > this.habilidades.marca.lastUsed + this.habilidades.marca.cooldown) { this.habilidades.marca.lastUsed = now; player.applyMarcaDaAlma(5000); }
+                if (now > this.habilidades.explosao.lastUsed + this.habilidades.explosao.cooldown) {
+                    this.habilidades.explosao.lastUsed = now;
+                    const p = new Projectile(this.mesh.position.clone(), player.mesh.position.clone().sub(this.mesh.position).normalize(), this, player);
+                    p.damage = this.getDamage('explosao'); p.explosionRadius = 3; p.mesh.material.color.set(0x8A2BE2); p.mesh.material.emissive.set(0x8A2BE2);
+                    p.specialEffect = 'explosaoDasTrevas'; enemyProjectiles.push(p); scene.add(p.mesh);
+                }
+            }
+            teleport() { this.mesh.visible = false; setTimeout(() => { const angle = Math.random() * Math.PI * 2; const offset = new THREE.Vector3(Math.cos(angle) * 10, 0, Math.sin(angle) * 10); this.mesh.position.add(offset); this.mesh.visible = true; }, 300); }
+            useRitual() { this.isImmortal = true; for (let i = 0; i < 3; i++) { const angle = (i/3) * Math.PI * 2; const offset = new THREE.Vector3(Math.cos(angle) * 4, 0, Math.sin(angle) * 4); const soul = new AlmaAmaldicoada(this.mesh.position.clone().add(offset), this); this.souls.push(soul); enemies.push(soul); scene.add(soul.mesh); } }
+            onSoulDestroyed(soul) { removeFromArray(this.souls, soul); if (this.souls.length === 0) { this.isImmortal = false; } }
+            useBarrier() { const b = this.habilidades.barreira; b.isActive = true; b.shieldHp = b.shieldMaxHp; b.timer = b.duration; if (!b.visual) { const geo = new THREE.SphereGeometry(this.hitboxRadius + 0.5, 32, 16); const mat = new THREE.MeshStandardMaterial({ color: 0x4B0082, transparent: true, opacity: 0.4, emissive: 0x4B0082, emissiveIntensity: 0.5 }); b.visual = new THREE.Mesh(geo, mat); this.mesh.add(b.visual); } b.visual.visible = true; }
+            deactivateBarrier() { const b = this.habilidades.barreira; b.isActive = false; if (b.visual) b.visual.visible = false; }
+            destroy(instigator) { gameManager.activeBoss = null; this.souls.forEach(s => s.destroy()); createExplosion(this.mesh.position, 80, new THREE.Color(0x8A2BE2)); if (instigator?.isPlayer) { instigator.addXp(this.xp); instigator.score += this.score; const orb = new BuffOrb(this.mesh.position, 'essencia_negra'); orbs.push(orb); scene.add(orb.mesh); } const curseZone = new MarcaDaAlmaEternaZone(this.mesh.position); dynamicEntities.push(curseZone); scene.add(curseZone.mesh); super.destroy(instigator); }
+        }
+        
+        class EspectroSombrio extends Enemy {
+            constructor(position, originalEnemy) {
+                super(position);
+                this.name = "Espectro Sombrio";
+                this.maxHp = originalEnemy.maxHp * 0.3;
+                this.hp = this.maxHp;
+                this.damage = (originalEnemy.damage || 10) * 0.3;
+                this.speed = (originalEnemy.speed || 2) * 1.1;
+                this.originalSpeed = this.speed;
+                this.lifetime = 10000;
+                this.hitboxRadius = originalEnemy.hitboxRadius || 0.5;
+
+                const geo = originalEnemy.mesh.geometry.clone();
+                const mat = new THREE.MeshStandardMaterial({
+                    color: 0x222222, emissive: 0x00aaff, transparent: true, opacity: 0.5
+                });
+                this.mesh = new THREE.Mesh(geo, mat);
+                this.mesh.position.copy(position);
+                this.mesh.scale.copy(originalEnemy.mesh.scale);
+            }
+            update(dt, player) {
+                this.lifetime -= dt * 1000;
+                if(this.lifetime <= 0) { this.destroy(); return; }
+                const dir = player.mesh.position.clone().sub(this.mesh.position).normalize();
+                this.mesh.position.add(dir.multiplyScalar(this.speed * dt));
+                if (this.mesh.position.distanceTo(player.mesh.position) < this.hitboxRadius + player.hitboxRadius) {
+                    player.takeDamage(this.damage, false);
+                    this.destroy();
+                }
+            }
+            destroy(instigator) { super.destroy(instigator); }
+        }
+        
+        class CaveiraExplosiva extends Enemy {
+            constructor(position, owner) {
+                super(position);
+                this.owner = owner;
+                this.name = "Caveira Geométrica";
+                this.maxHp = 1; this.hp = 1;
+                this.damage = 200 + (player.maxHp * 0.03);
+                this.speed = 4; this.originalSpeed = 4;
+                this.lifetime = 8000; this.hitboxRadius = 0.4;
+                const geo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+                const mat = new THREE.MeshStandardMaterial({ color: 0xeeeeee, emissive: 0x00aaff });
+                this.mesh = new THREE.Mesh(geo, mat);
+                this.mesh.position.copy(position);
+            }
+            update(dt, player) {
+                this.lifetime -= dt * 1000;
+                if (this.lifetime <= 0) { this.destroy(); return; }
+                const dir = player.mesh.position.clone().sub(this.mesh.position).normalize();
+                this.mesh.position.add(dir.multiplyScalar(this.speed * dt));
+                if(this.mesh.position.distanceTo(player.mesh.position) < this.hitboxRadius + player.hitboxRadius) {
+                    this.destroy();
+                }
+            }
+            destroy(instigator) {
+                createAreaExplosion(this.mesh.position, 2, this.damage, this, player);
+                super.destroy(instigator);
+            }
+        }
+        
+        class NevascaZone {
+            constructor(position, owner) {
+                this.owner = owner;
+                this.radius = 6;
+                this.duration = 3000; this.lifeTimer = this.duration;
+                this.damagePerSecond = 600 + (player.maxHp * 0.12);
+                this.lastDamageTick = 0; this.damageInterval = 1000;
+                const geo = new THREE.CylinderGeometry(this.radius, this.radius, 0.2, 64);
+                const mat = new THREE.MeshBasicMaterial({ color: 0x00aaff, transparent: true, opacity: 0.3 });
+                this.mesh = new THREE.Mesh(geo, mat);
+                this.mesh.position.copy(position);
+            }
+            update(dt, player) {
+                this.lifeTimer -= dt * 1000;
+                this.lastDamageTick -= dt * 1000;
+                if (this.lifeTimer <= 0) { this.destroy(); return; }
+                const dist = this.mesh.position.distanceTo(player.mesh.position);
+                if (dist < this.radius) {
+                    if (this.lastDamageTick <= 0) {
+                        player.takeDamage(this.damagePerSecond, false);
+                        this.lastDamageTick = this.damageInterval;
+                    }
+                }
+            }
+            destroy() { if (this.mesh.parent) scene.remove(this.mesh); removeFromArray(dynamicEntities, this); }
+        }
+
+        class LichKing extends Enemy {
+            constructor(position, player) {
+                super(position);
+                this.name = "Lich King"; this.isLichKing = true;
+                this.maxHp = 12000 + (400 * player.level) + (player.maxHp * 0.3); this.hp = this.maxHp;
+                this.damage = 200 + (player.maxHp * 0.08);
+                this.speed = 0.5; this.originalSpeed = 0.5; this.xp = 50000; this.score = 25000;
+                this.hitboxRadius = 1.5; this.auraRadius = 4;
+                this.mesh = new THREE.Group(); this.mesh.position.copy(position);
+                this.setupVisuals();
+                this.revivalQueue = [];
+                this.habilidades = {
+                    explosao: { cooldown: 6000, lastUsed: 0 },
+                    prisao: { cooldown: 12000, lastUsed: 0 },
+                    chamado: { cooldown: 15000, lastUsed: 0 },
+                    ultimate: { cooldown: 35000, lastUsed: 0, isChanneling: false, timer: 0 }
+                };
+            }
+            setupVisuals(){
+                const bodyGeo = new THREE.BoxGeometry(2, 2, 2);
+                const bodyMat = new THREE.MeshStandardMaterial({color: 0xADD8E6, transparent: true, opacity: 0.7, emissive: 0x00BFFF, emissiveIntensity: 0.5});
+                this.mesh.add(new THREE.Mesh(bodyGeo, bodyMat));
+
+                const helmGeo = new THREE.CylinderGeometry(0.5, 0.8, 1, 6);
+                const helmMat = new THREE.MeshStandardMaterial({color: 0x444444});
+                const helm = new THREE.Mesh(helmGeo, helmMat);
+                helm.position.y = 1.5; this.mesh.add(helm);
+
+                const spikeGeo = new THREE.ConeGeometry(0.2, 0.8, 4);
+                const spikeMat = new THREE.MeshStandardMaterial({color: 0x333333});
+                const spike1 = new THREE.Mesh(spikeGeo, spikeMat);
+                spike1.position.y = 2.4; helm.add(spike1);
+            }
+            addToRevivalQueue(deadEnemy) {
+                this.revivalQueue.push({
+                    reviveAt: Date.now() + 5000,
+                    position: deadEnemy.mesh.position.clone(),
+                    original: deadEnemy
+                });
+            }
+            update(dt, player) {
+                if (this.isDestroyed) return;
+                const now = Date.now();
+                
+                for(let i = this.revivalQueue.length - 1; i >= 0; i--) {
+                    const item = this.revivalQueue[i];
+                    if (now >= item.reviveAt) {
+                        const espectro = new EspectroSombrio(item.position, item.original);
+                        enemies.push(espectro); scene.add(espectro.mesh);
+                        this.revivalQueue.splice(i, 1);
+                    }
+                }
+                
+                const dist = this.mesh.position.distanceTo(player.mesh.position);
+                if(dist < this.auraRadius) {
+                    player.takeDamage(player.maxHp * 0.02 * dt, false);
+                    player.applySlow(500, 0.3);
+                }
+                
+                if(this.habilidades.ultimate.isChanneling) {
+                    this.habilidades.ultimate.timer -= dt * 1000;
+                    if(this.habilidades.ultimate.timer <= 0) { this.finishUltimate(player); }
+                    return;
+                }
+                if(now > this.habilidades.ultimate.lastUsed + this.habilidades.ultimate.cooldown) { this.useUltimate(); }
+                else if(now > this.habilidades.chamado.lastUsed + this.habilidades.chamado.cooldown) { this.useChamado(player); }
+                else if(now > this.habilidades.prisao.lastUsed + this.habilidades.prisao.cooldown) { this.usePrisao(player); }
+                else if(now > this.habilidades.explosao.lastUsed + this.habilidades.explosao.cooldown) { this.useExplosao(player); }
+                
+                
+                const dir = player.mesh.position.clone().sub(this.mesh.position).normalize();
+                this.mesh.position.add(dir.multiplyScalar(this.speed * dt));
+                this.mesh.lookAt(player.mesh.position.x, this.mesh.position.y, player.mesh.position.z);
+            }
+            useExplosao(player) {
+                this.habilidades.explosao.lastUsed = Date.now();
+                const baseDir = player.mesh.position.clone().sub(this.mesh.position).normalize();
+                for(let i=-1; i<=1; i++) {
+                    const pDir = baseDir.clone().applyAxisAngle(new THREE.Vector3(0,1,0), i * 0.2);
+                    const p = new Projectile(this.mesh.position.clone(), pDir, this, player);
+                    p.damage = 300 + (player.maxHp * 0.04);
+                    p.specialEffect = 'freezingCone';
+                    enemyProjectiles.push(p); scene.add(p.mesh);
+                }
+            }
+            usePrisao(player) {
+                this.habilidades.prisao.lastUsed = Date.now();
+                player.applyLichKingPrison(2000);
+            }
+            useChamado(player) {
+                this.habilidades.chamado.lastUsed = Date.now();
+                for(let i=0; i<5; i++) {
+                    const angle = (i/5) * Math.PI * 2;
+                    const pos = this.mesh.position.clone().add(new THREE.Vector3(Math.cos(angle)*2, 0, Math.sin(angle)*2));
+                    const caveira = new CaveiraExplosiva(pos, this);
+                    enemies.push(caveira); scene.add(caveira.mesh);
+                }
+            }
+            useUltimate() {
+                this.habilidades.ultimate.lastUsed = Date.now();
+                this.habilidades.ultimate.isChanneling = true;
+                this.habilidades.ultimate.timer = 3000;
+            }
+            finishUltimate(player) {
+                this.habilidades.ultimate.isChanneling = false;
+                const nevasca = new NevascaZone(this.mesh.position, this);
+                dynamicEntities.push(nevasca); scene.add(nevasca.mesh);
+                player.applySlow(4000, 0.5);
+                const drainEffect = player.statusEffects.lichKingLifeDrain;
+                drainEffect.isActive = true;
+                drainEffect.timer = 4000;
+                drainEffect.damagePerSecond = player.maxHp * 0.05;
+            }
+            destroy(instigator) {
+                gameManager.activeBoss = null;
+                const rand = Math.random();
+                let droppedItem;
+                if(rand < 0.10) droppedItem = 'coroa_lich_buff';
+                else if(rand < 0.30) droppedItem = 'lamina_geada_buff';
+                else if(rand < 0.65) droppedItem = 'fragmento_morte_buff';
+                else droppedItem = 'talisma_quebrado_buff';
+                
+                const itemEffects = {
+                    'coroa_lich_buff': { ability_damage: 1.0, immunity_freeze: true },
+                    'lamina_geada_buff': { bonus_damage: 20, attack_speed: 0.1 },
+                    'fragmento_morte_buff': { chance: 0.25 },
+                    'talisma_quebrado_buff': { max_hp_bonus: 0.10, freeze_reduction: 0.50 }
+                };
+                player.applyTimedBuff(droppedItem, 120, itemEffects[droppedItem]);
+                if(droppedItem === 'talisma_quebrado_buff') {
+                    const hpBonus = player.maxHp * 0.10;
+                    player.maxHp += hpBonus; player.heal(hpBonus);
+                }
+
+                if (instigator?.isPlayer) { instigator.addXp(this.xp); instigator.score += this.score; }
+                super.destroy(instigator);
+            }
+        }
+        
+        class EsporoVenenosoZone {
+            constructor(position, owner) {
+                this.owner = owner;
+                this.damagePerSecond = 10 + (player.maxHp * 0.015);
+                this.radius = 2.5;
+                this.duration = 8000;
+                this.lifeTimer = this.duration;
+                this.damageTick = 1000;
+                this.lastDamageTick = 0;
+
+                const geo = new THREE.CircleGeometry(this.radius, 32);
+                const mat = new THREE.MeshBasicMaterial({ color: 0x8f00ff, transparent: true, opacity: 0.4 });
+                this.mesh = new THREE.Mesh(geo, mat);
+                this.mesh.position.copy(position);
+                this.mesh.position.y = 0.01;
+                this.mesh.rotation.x = -Math.PI / 2;
+            }
+
+            update(dt, player) {
+                this.lifeTimer -= dt * 1000;
+                this.lastDamageTick -= dt * 1000;
+
+                const pulse = Math.sin(clock.getElapsedTime() * 5) * 0.1;
+                this.mesh.material.opacity = 0.3 + pulse;
+
+                if (this.lifeTimer <= 0) {
+                    this.destroy();
+                    return;
+                }
+
+                const dist = this.mesh.position.distanceTo(player.mesh.position);
+                if (dist < this.radius && this.lastDamageTick <= 0) {
+                    player.takeDamage(this.damagePerSecond, false);
+                    player.applySlow(1500, 0.20);
+                    this.lastDamageTick = this.damageTick;
+                }
+            }
+
+            destroy() {
+                if (this.mesh.parent) scene.remove(this.mesh);
+                removeFromArray(dynamicEntities, this);
+            }
+        }
+        
+        class BrotoCarnivoro extends Enemy {
+            constructor(position, owner) {
+                super(position);
+                this.owner = owner;
+                this.name = "Broto Carnívoro";
+                this.maxHp = 150 + (player.level * 20);
+                this.hp = this.maxHp;
+                this.damage = 25 + (player.level * 3);
+                this.speed = 3.5;
+                this.originalSpeed = 3.5;
+                this.hitboxRadius = 0.6;
+                this.attackRange = 1.5;
+                this.attackCooldown = 1800;
+                this.lastAttackTime = 0;
+
+                const geo = new THREE.SphereGeometry(this.hitboxRadius, 8, 6);
+                const mat = new THREE.MeshStandardMaterial({ color: 0x4c956c, roughness: 0.7 });
+                this.mesh = new THREE.Mesh(geo, mat);
+                this.mesh.position.copy(position);
+                this.mesh.position.y = this.hitboxRadius;
+            }
+
+            update(dt, player) {
+                if (isGameOver || this.isDestroyed || this.updateStatus(dt)) return;
+                
+                const dist = this.mesh.position.distanceTo(player.mesh.position);
+                if (dist > this.attackRange) {
+                    const dir = player.mesh.position.clone().sub(this.mesh.position).normalize();
+                    this.mesh.position.add(dir.multiplyScalar(this.speed * dt));
+                } else {
+                    if (Date.now() > this.lastAttackTime + this.attackCooldown) {
+                        this.lastAttackTime = Date.now();
+                        player.takeDamage(this.damage);
+                    }
+                }
+                this.mesh.lookAt(player.mesh.position);
+            }
+            
+            destroy(instigator) {
+                createExplosion(this.mesh.position, 10, this.mesh.material.color);
+                super.destroy(instigator);
+            }
+        }
+
+        class PlantaCarnivoraRainha extends Enemy {
+            constructor(position, player) {
+                super(position);
+                this.isPlantaCarnivora = true;
+                this.name = "Planta Carnívora Rainha";
+                this.maxHp = 2500 + (player.maxHp * 0.8);
+                this.hp = this.maxHp;
+                this.speed = 0; 
+                this.originalSpeed = 0;
+                this.xp = 3000;
+                this.score = 6000;
+                this.hitboxRadius = 2.0;
+
+                this.mesh = new THREE.Group();
+                this.mesh.position.copy(position);
+                const baseGeo = new THREE.CylinderGeometry(2, 1.5, 1, 12);
+                const baseMat = new THREE.MeshStandardMaterial({ color: 0x588157 });
+                const base = new THREE.Mesh(baseGeo, baseMat);
+                this.mesh.add(base);
+
+                const stemGeo = new THREE.CylinderGeometry(0.8, 0.8, 3, 12);
+                const stemMat = new THREE.MeshStandardMaterial({ color: 0x3a5a40 });
+                const stem = new THREE.Mesh(stemGeo, stemMat);
+                stem.position.y = 2;
+                this.mesh.add(stem);
+
+                this.head = new THREE.Group();
+                stem.add(this.head);
+                this.head.position.y = 1.5;
+                const lowerJawGeo = new THREE.SphereGeometry(1.5, 16, 8, 0, Math.PI);
+                const jawMat = new THREE.MeshStandardMaterial({ color: 0xa3b18a, side: THREE.DoubleSide });
+                this.lowerJaw = new THREE.Mesh(lowerJawGeo, jawMat);
+                this.lowerJaw.rotation.x = Math.PI;
+                this.head.add(this.lowerJaw);
+
+                this.upperJaw = this.lowerJaw.clone();
+                this.upperJaw.rotation.x = 0;
+                this.head.add(this.upperJaw);
+
+                this.habilidades = {
+                    chicote: { cooldown: 4000, lastUsed: 0 },
+                    sementes: { cooldown: 8000, lastUsed: 0 },
+                    brotos: { cooldown: 12000, lastUsed: 0 },
+                    devorar: { cooldown: 25000, lastUsed: 0, isCharging: false, chargeTimer: 0, chargeDuration: 2000 }
+                };
+            }
+
+            usarChicote(target) {
+                this.habilidades.chicote.lastUsed = Date.now();
+                const dir = target.mesh.position.clone().sub(this.mesh.position).normalize();
+                const p = new Projectile(this.mesh.position.clone().add(new THREE.Vector3(0, 3, 0)), dir, this, target);
+                p.speed = 25;
+                p.damage = 50 + (target.maxHp * 0.05);
+                enemyProjectiles.push(p);
+                scene.add(p.mesh);
+            }
+            
+            usarSementes(target) {
+                this.habilidades.sementes.lastUsed = Date.now();
+                for (let i = 0; i < 3; i++) {
+                    const offset = new THREE.Vector3((Math.random() - 0.5) * 15, 0, (Math.random() - 0.5) * 15);
+                    const targetPos = target.mesh.position.clone().add(offset);
+                    const dir = targetPos.sub(this.mesh.position).normalize();
+                    const p = new Projectile(this.mesh.position.clone().add(new THREE.Vector3(0, 4, 0)), dir, this, target);
+                    p.specialEffect = 'sementeVenenosa';
+                    p.velocity = p.direction.clone().multiplyScalar(p.speed * 0.8);
+                    p.velocity.y = 8;
+                    enemyProjectiles.push(p);
+                    scene.add(p.mesh);
+                }
+            }
+
+            spawnBrotos() {
+                this.habilidades.brotos.lastUsed = Date.now();
+                for(let i = 0; i < 2; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const radius = 3;
+                    const pos = this.mesh.position.clone().add(new THREE.Vector3(Math.cos(angle) * radius, 0, Math.sin(angle) * radius));
+                    const broto = new BrotoCarnivoro(pos, this);
+                    enemies.push(broto);
+                    scene.add(broto.mesh);
+                }
+            }
+            
+            usarDevorar() {
+                const h = this.habilidades.devorar;
+                h.lastUsed = Date.now();
+                h.isCharging = true;
+                h.chargeTimer = h.chargeDuration;
+            }
+
+            update(dt, player) {
+                if (isGameOver || this.isDestroyed) return;
+
+                const now = Date.now();
+                const dist = this.mesh.position.distanceTo(player.mesh.position);
+                this.head.lookAt(player.mesh.position);
+
+                const h_devorar = this.habilidades.devorar;
+                if (h_devorar.isCharging) {
+                    h_devorar.chargeTimer -= dt * 1000;
+                    const chargeProgress = 1 - (h_devorar.chargeTimer / h_devorar.chargeDuration);
+                    this.upperJaw.rotation.x = chargeProgress * (Math.PI / 4);
+                    this.lowerJaw.rotation.x = Math.PI - (chargeProgress * (Math.PI / 4));
+                    
+                    if (dist < 15) {
+                        const pullDir = this.mesh.position.clone().sub(player.mesh.position).normalize();
+                        player.mesh.position.add(pullDir.multiplyScalar(15 * chargeProgress * dt));
+                    }
+
+                    if (h_devorar.chargeTimer <= 0) {
+                        h_devorar.isCharging = false;
+                        if (dist < 3) {
+                            player.takeDamage(player.maxHp * 0.40);
+                        }
+                    }
+                } else {
+                    this.upperJaw.rotation.x = THREE.MathUtils.lerp(this.upperJaw.rotation.x, 0, 0.1);
+                    this.lowerJaw.rotation.x = THREE.MathUtils.lerp(this.lowerJaw.rotation.x, Math.PI, 0.1);
+                    
+                    if (dist < 10 && now > h_devorar.lastUsed + h_devorar.cooldown) {
+                        this.usarDevorar();
+                    } else if (now > this.habilidades.brotos.lastUsed + this.habilidades.brotos.cooldown) {
+                        this.spawnBrotos();
+                    } else if (dist < 20 && now > this.habilidades.sementes.lastUsed + this.habilidades.sementes.cooldown) {
+                        this.usarSementes(player);
+                    } else if (dist < 30 && now > this.habilidades.chicote.lastUsed + this.habilidades.chicote.cooldown) {
+                        this.usarChicote(player);
+                    }
+                }
+            }
+
+            destroy(instigator) {
+                gameManager.isPlantaCarnivoraAlive = false;
+                createExplosion(this.mesh.position, 80, new THREE.Color(0x2d6a4f));
+                if (instigator?.isPlayer) {
+                    instigator.addXp(this.xp);
+                    instigator.score += this.score;
+                    const buffAura = new AuraDeRecompensa(this.mesh.position, 'planta_buff', { lifesteal: 0.05, move_speed: 1.15, damage: 1.10 }, 45000, new THREE.Color(0x2d6a4f));
+                    dynamicEntities.push(buffAura);
+                    scene.add(buffAura.mesh);
+                }
+                gameManager.activeBoss = null;
+                super.destroy(instigator);
+            }
+        }
+        
+        class EnemyTower extends Enemy { constructor(position) { super(position); this.maxHp = 500 * gameManager.globalMultiplier; this.hp = this.maxHp; this.damage = 20 * gameManager.globalMultiplier; this.xp = 100; this.score = 150; this.attackRange = 30; this.attackCooldown = 1500; this.lastAttackTime = 0; this.speed = 0; this.originalSpeed = 0; const geo = new THREE.CylinderGeometry(1, 1.2, 4, 12); const mat = new THREE.MeshStandardMaterial({ color: 0xc0392b }); this.mesh = new THREE.Mesh(geo, mat); this.mesh.position.copy(position); this.mesh.position.y = 2; this.mesh.castShadow = true; this.hitboxRadius = 1.2; } scaleStats(multiplier) { this.applyGlobalBuff(multiplier); } getDamage(target) { const dist = this.mesh.position.distanceTo(target.mesh.position); const bonus = 1 + Math.max(0, (this.attackRange - dist) / this.attackRange); return this.damage * bonus; } destroy(instigator) { this.mesh.visible = false; createExplosion(this.mesh.position, 25, this.mesh.material.color); if (instigator?.isPlayer) { instigator.addXp(this.xp); instigator.score += this.score; } gameManager.scheduleRespawn(this, 60); super.destroy(instigator); } respawn() { this.hp = this.maxHp; this.isDestroyed = false; this.mesh.visible = true; enemies.push(this); } attack(target) { const now = Date.now(); if (now > this.lastAttackTime + this.attackCooldown) { this.lastAttackTime = now; const start = this.mesh.position.clone(); start.y = 3; const dir = target.mesh.position.clone().sub(start).normalize(); const p = new Projectile(start, dir, this, target); enemyProjectiles.push(p); scene.add(p.mesh); } } update(dt, player) { if (isGameOver || this.isDestroyed || this.updateStatus(dt)) return; if (this.mesh.position.distanceTo(player.mesh.position) <= this.attackRange) this.attack(player); } }
+        
+        class GuardianGuerreiro extends Enemy { constructor(position, isElite = false) { super(position); this.isElite = isElite; this.name = (isElite ? "Guardião de Elite" : "Guardião") + " Guerreiro"; this.maxHp = 800 * gameManager.globalMultiplier * (isElite ? 20 : 1); this.hp = this.maxHp; this.damage = 30 * gameManager.globalMultiplier; this.speed = 2.0; this.originalSpeed = 2.0; this.attackRange = 2.0; this.attackCooldown = 1500; this.lastAttackTime = 0; this.xp = 500; this.score = 1000; this.hitboxRadius = 1.0; this.isGuardian = true; this.stunCooldown = 10000; this.lastStunTime = 0; const geo = new THREE.BoxGeometry(1.5, 1.5, 1.5); const mat = new THREE.MeshStandardMaterial({ color: 0x8B0000, metalness: 0.6, roughness: 0.4 }); this.mesh = new THREE.Mesh(geo, mat); this.mesh.position.copy(position); this.mesh.position.y = 0.75; this.mesh.castShadow = true; if (isElite) this.addEliteVisuals(); } addEliteVisuals() { const auraGeo = new THREE.SphereGeometry(1.2, 16, 16); const auraMat = new THREE.MeshBasicMaterial({color: 0xffd700, transparent: true, opacity: 0.3, wireframe: true}); this.mesh.add(new THREE.Mesh(auraGeo, auraMat)); } scaleStats(multiplier) { this.applyGlobalBuff(multiplier); } destroy(instigator) { createExplosion(this.mesh.position, 40, this.mesh.material.color); if (instigator?.isPlayer) { instigator.addXp(this.xp); instigator.score += this.score; if (!this.isElite) instigator.applyBuff('guerreiro'); } super.destroy(instigator); } attack(target) { const now = Date.now(); if (now > this.lastAttackTime + this.attackCooldown) { this.lastAttackTime = now; let calculatedDamage = this.damage; if(this.isElite) { calculatedDamage = 300 * gameManager.globalMultiplier + (target.hp * 0.05); } if (now > this.lastStunTime + this.stunCooldown) { this.lastStunTime = now; target.applyStun(2000); this.mesh.material.emissive.set(0xff0000); setTimeout(() => { if (this.mesh.material.emissive) this.mesh.material.emissive.set(0x000000); }, 200); } target.takeDamage(calculatedDamage); } } update(dt, player) { if (isGameOver || this.isDestroyed || this.updateStatus(dt)) return; const dist = this.mesh.position.distanceTo(player.mesh.position); if (dist > this.attackRange) { const dir = player.mesh.position.clone().sub(this.mesh.position).normalize(); this.mesh.position.add(dir.multiplyScalar(this.speed * dt)); } else { this.attack(player); } this.mesh.lookAt(player.mesh.position.x, this.mesh.position.y, player.mesh.position.z); } }
+        
+        class GuardianMago extends Enemy { constructor(position, isElite = false) { super(position); this.isElite = isElite; this.name = (isElite ? "Guardião de Elite" : "Guardião") + " Mago"; this.maxHp = 600 * gameManager.globalMultiplier * (isElite ? 20 : 1); this.hp = this.maxHp; this.damage = 20 * gameManager.globalMultiplier; this.xp = 600; this.score = 1200; this.hitboxRadius = 0.8; this.isGuardian = true; this.speed = 2.5; this.originalSpeed = 2.5; this.attackRange = 15.0; this.minAttackRange = 5.0; this.attackCooldown = 4000; this.lastAttackTime = 0; this.freezeCooldown = 15000; this.lastFreezeTime = 0; this.state = 'repositioning'; this.stateTimer = 2000 + Math.random() * 2000; this.targetPosition = null; this.castDuration = 1000; const geo = new THREE.OctahedronGeometry(1.2, 0); const mat = new THREE.MeshStandardMaterial({ color: 0x00008B, emissive: 0x5588ff, emissiveIntensity: 0.5 }); this.mesh = new THREE.Mesh(geo, mat); this.mesh.position.copy(position); this.mesh.position.y = 1.25; this.mesh.castShadow = true; if (isElite) this.addEliteVisuals(); } addEliteVisuals() { const auraGeo = new THREE.SphereGeometry(1.2, 16, 16); const auraMat = new THREE.MeshBasicMaterial({color: 0xffd700, transparent: true, opacity: 0.3, wireframe: true}); this.mesh.add(new THREE.Mesh(auraGeo, auraMat)); } scaleStats(multiplier) { this.applyGlobalBuff(multiplier); } destroy(instigator) { createExplosion(this.mesh.position, 40, this.mesh.material.color); if (instigator?.isPlayer) { instigator.addXp(this.xp); instigator.score += this.score; if (!this.isElite) instigator.applyBuff('mago'); } super.destroy(instigator); } attack(target) { const now = Date.now(); if (now > this.lastAttackTime + this.attackCooldown) { this.lastAttackTime = now; const dir = target.mesh.position.clone().sub(this.mesh.position).normalize(); const p = new Projectile(this.mesh.position.clone(), dir, this, target); p.explosionRadius = 2.0; if(this.isElite) { p.damage = 300 * gameManager.globalMultiplier + (target.hp * 0.05); } if (now > this.lastFreezeTime + this.freezeCooldown) { this.lastFreezeTime = now; p.specialEffect = 'freeze'; } enemyProjectiles.push(p); scene.add(p.mesh); } } update(dt, player) { if (isGameOver || this.isDestroyed || this.updateStatus(dt)) return; this.mesh.rotation.y += dt * 0.5; this.stateTimer -= dt * 1000; if (this.state === 'casting') { if (this.stateTimer <= 0) { this.attack(player); this.state = 'repositioning'; this.stateTimer = 2000 + Math.random() * 2000; this.targetPosition = null; } return; } if (this.state === 'repositioning') { const dist = this.mesh.position.distanceTo(player.mesh.position); if (this.stateTimer <= 0 || (this.targetPosition && this.mesh.position.distanceTo(this.targetPosition) < 1.0)) { this.state = 'casting'; this.stateTimer = this.castDuration; return; } if (!this.targetPosition || dist < this.minAttackRange) { const angle = Math.random() * Math.PI * 2; const radius = this.minAttackRange + Math.random() * 5; this.targetPosition = player.mesh.position.clone().add( new THREE.Vector3(Math.cos(angle) * radius, 0, Math.sin(angle) * radius) ); } const moveDir = this.targetPosition.clone().sub(this.mesh.position).normalize(); this.mesh.position.add(moveDir.multiplyScalar(this.speed * dt)); this.mesh.lookAt(player.mesh.position.x, this.mesh.position.y, player.mesh.position.z); } } }
+        
+        class GuardianArqueiro extends Enemy { constructor(position, isElite = false) { super(position); this.isElite = isElite; this.name = (isElite ? "Guardião de Elite" : "Guardião") + " Arqueiro"; this.maxHp = 500 * gameManager.globalMultiplier * (isElite ? 20 : 1); this.hp = this.maxHp; this.damage = 25 * gameManager.globalMultiplier; this.xp = 700; this.score = 1500; this.hitboxRadius = 0.7; this.isGuardian = true; this.speed = 3.0; this.originalSpeed = 3.0; this.attackRange = 22; this.attackCooldown = 1500; this.lastAttackTime = 0; this.idealDistance = 10.0; this.retreatDistance = 6.0; const geo = new THREE.ConeGeometry(0.8, 2.5, 4); const mat = new THREE.MeshStandardMaterial({ color: 0x006400 }); this.mesh = new THREE.Mesh(geo, mat); this.mesh.position.copy(position); this.mesh.position.y = 1.25; this.mesh.castShadow = true; if (isElite) this.addEliteVisuals(); } addEliteVisuals() { const auraGeo = new THREE.SphereGeometry(1.2, 16, 16); const auraMat = new THREE.MeshBasicMaterial({color: 0xffd700, transparent: true, opacity: 0.3, wireframe: true}); this.mesh.add(new THREE.Mesh(auraGeo, auraMat)); } scaleStats(multiplier) { this.applyGlobalBuff(multiplier); } destroy(instigator) { createExplosion(this.mesh.position, 40, this.mesh.material.color); if (instigator?.isPlayer) { instigator.addXp(this.xp); instigator.score += this.score; if (!this.isElite) instigator.applyBuff('arqueiro'); } super.destroy(instigator); } attack(target) { const now = Date.now(); if (now > this.lastAttackTime + this.attackCooldown) { this.lastAttackTime = now; const dir = target.mesh.position.clone().sub(this.mesh.position).normalize(); const p = new Projectile(this.mesh.position.clone(), dir, this, target); if(this.isElite) { p.damage = 300 * gameManager.globalMultiplier + (target.hp * 0.05); } p.specialEffect = 'bleed'; p.bleedDamage = 5; enemyProjectiles.push(p); scene.add(p.mesh); } } update(dt, player) { if (isGameOver || this.isDestroyed || this.updateStatus(dt)) return; const dist = this.mesh.position.distanceTo(player.mesh.position); let moveDir = new THREE.Vector3(); if (dist < this.retreatDistance) { moveDir = this.mesh.position.clone().sub(player.mesh.position).normalize(); } else if (dist > this.idealDistance) { moveDir = player.mesh.position.clone().sub(this.mesh.position).normalize(); } else { this.attack(player); } if (moveDir.length() > 0) { this.mesh.position.add(moveDir.multiplyScalar(this.speed * dt)); } this.mesh.lookAt(player.mesh.position.x, this.mesh.position.y, player.mesh.position.z); } }
+        
+        class SuperBoss extends Enemy { constructor(position, hpOverride = null, damageMultiplier = 1) { super(position); this.name = "Super Boss" + (hpOverride ? " Modificado" : ""); this.maxHp = (hpOverride || 1000) * gameManager.globalMultiplier; this.hp = this.maxHp; this.baseDamage = 30 * gameManager.globalMultiplier * damageMultiplier; this.speed = 1.0; this.originalSpeed = 1.0; this.xp = 500; this.score = 7500; this.attackCooldown = 5000; this.lastAttackTime = 0; this.auraRadius = 8.0; this.pullForce = 2.5; this.damageMultiplier = 1.0; this.attackSpeedMultiplier = 1.0; this.hitboxRadius = 3.0; this.isAggressive = false; const mat = new THREE.MeshStandardMaterial({ color: 0xff00ff, roughness: 0.4, metalness: 0.8, emissive: 0x660066, transparent: true, opacity: 0.8 }); const geo = new THREE.SphereGeometry(this.hitboxRadius, 32, 32); this.mesh = new THREE.Mesh(geo, mat); this.mesh.position.copy(position); this.mesh.position.y = 3; this.mesh.castShadow = true; const auraGeo = new THREE.SphereGeometry(this.auraRadius, 32, 32); const auraMat = new THREE.MeshBasicMaterial({ color: 0xff00ff, transparent: true, opacity: 0.15, wireframe: true }); this.auraMesh = new THREE.Mesh(auraGeo, auraMat); this.mesh.add(this.auraMesh); } scaleStats(multiplier) { this.applyGlobalBuff(multiplier); } getDamage(target) { return (this.baseDamage * this.damageMultiplier) + (target.maxHp * 0.05); } destroy(instigator) { createExplosion(this.mesh.position, 100, this.mesh.material.color); if (instigator?.isPlayer) { instigator.addXp(this.xp); instigator.score += this.score; } gameManager.activeBoss = null; super.destroy(instigator); } absorbCube(cube) { const hpBonus = this.maxHp * 0.50; this.maxHp += hpBonus; this.hp += hpBonus; cube.destroy(this); this.checkAggression(); } absorbXpOrb(orb) { this.damageMultiplier += 0.005; orb.destroy(); this.checkAggression(); } absorbHealingOrb(orb) { this.attackSpeedMultiplier += 0.003; this.attackCooldown = 5000 / this.attackSpeedMultiplier; orb.destroy(); this.checkAggression(); } checkAggression() { if (!this.isAggressive && (this.damageMultiplier > 1.1 || this.attackSpeedMultiplier > 1.05 || this.maxHp > 1500 * gameManager.globalMultiplier)) { this.isAggressive = true; this.auraMesh.material.color.set(0xff0000); this.mesh.material.emissive.set(0xff0000); createAreaExplosion(this.mesh.position, 15, 50 * gameManager.globalMultiplier, this); } } update(dt, player) { if (isGameOver || this.isDestroyed || this.updateStatus(dt)) return; const absorbableCubes = enemies.filter(o => o instanceof PurpleCube); const absorbableOrbs = orbs; const allAbsorbable = [...absorbableCubes, ...absorbableOrbs]; for (const obj of allAbsorbable) { const distance = this.mesh.position.distanceTo(obj.mesh.position); if (distance < this.auraRadius) { const pullDir = this.mesh.position.clone().sub(obj.mesh.position).normalize(); obj.mesh.position.add(pullDir.multiplyScalar(this.pullForce * dt)); const collisionDist = (obj.hitboxRadius || 0.5) + this.hitboxRadius; if (distance < collisionDist) { if (obj instanceof PurpleCube) this.absorbCube(obj); else if (obj instanceof XpOrb) this.absorbXpOrb(obj); else if (obj instanceof HealingOrb) this.absorbHealingOrb(obj); } } } const dir = player.mesh.position.clone().sub(this.mesh.position).normalize(); this.mesh.position.add(dir.multiplyScalar(this.speed * dt)); this.mesh.lookAt(player.mesh.position.x, this.mesh.position.y, player.mesh.position.z); this.attack(player); this.auraMesh.scale.setScalar(1 + Math.sin(clock.getElapsedTime() * 0.5) * 0.02); } attack(target) { const now = Date.now(); if (now > this.lastAttackTime + this.attackCooldown) { this.lastAttackTime = now; const num = 5; const cone = Math.PI / 6; const baseDir = target.mesh.position.clone().sub(this.mesh.position).normalize(); for (let i = 0; i < num; i++) { const offset = (i - (num - 1) / 2) * (cone / (num - 1)); const dir = baseDir.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), offset); const p = new Projectile(this.mesh.position.clone(), dir, this, target); enemyProjectiles.push(p); scene.add(p.mesh); } } } }
+        
+        class FilhoteCao extends Enemy { constructor(position, playerLevel, parent) { super(position); this.parent = parent; this.name = "Filhote do Cão"; this.maxHp = (80 + (playerLevel * 40)) * 0.25; this.hp = this.maxHp; this.damage = (15 + (playerLevel * 5)) * 0.3; this.speed = 4.5; this.originalSpeed = 4.5; this.hitboxRadius = 0.6; this.attackRange = 1.5; this.attackCooldown = 1500; this.lastAttackTime = 0; this.shield = { isActive: false, hp: 0, timer: 0 }; const geo = new THREE.BoxGeometry(1.2, 0.6, 0.6); const mat = new THREE.MeshStandardMaterial({ color: 0x8a3324 }); this.mesh = new THREE.Mesh(geo, mat); this.mesh.position.copy(position); this.mesh.position.y = 0.3; this.mesh.castShadow = true; } applyShield(duration, amount) { this.shield.isActive = true; this.shield.timer = duration; this.shield.hp = amount; } takeDamage(amount, instigator, countsForPassive = true) { if (this.isDestroyed) return; if (this.shield.isActive) { const damageToShield = Math.min(amount, this.shield.hp); this.shield.hp -= damageToShield; const remainingDamage = amount - damageToShield; if (remainingDamage > 0) this.hp -= remainingDamage; } else { this.hp -= amount; } if (this.hp <= 0) this.destroy(instigator); } update(dt, player) { if (isGameOver || this.isDestroyed || this.updateStatus(dt)) return; const ms = dt * 1000; if(this.shield.isActive) { this.shield.timer -= ms; if(this.shield.timer <= 0 || this.shield.hp <= 0) { this.shield.isActive = false; } } const target = player; const dist = this.mesh.position.distanceTo(target.mesh.position); let currentSpeed = this.originalSpeed; if (this.parent && this.parent.habilidades.marca.isActive) { currentSpeed *= 1.5; } if (dist > this.attackRange) { const dir = target.mesh.position.clone().sub(this.mesh.position).normalize(); this.mesh.position.add(dir.multiplyScalar(currentSpeed * dt)); } else { if (Date.now() > this.lastAttackTime + this.attackCooldown) { this.lastAttackTime = now; target.takeDamage(this.damage); } } this.mesh.lookAt(target.mesh.position.x, this.mesh.position.y, target.mesh.position.z); } destroy(instigator) { createExplosion(this.mesh.position, 5, this.mesh.material.color); if (this.parent && !this.parent.isDestroyed) { this.parent.scheduleRespawnFilhote(this); } super.destroy(instigator); } respawn(position) { this.isDestroyed = false; this.hp = this.maxHp; this.mesh.position.copy(position); enemies.push(this); scene.add(this.mesh); } }
+        
+        class CaoDosInfernos extends Enemy { constructor(position, playerLevel) { super(position); this.name = "Cão dos Infernos"; this.playerLevel = playerLevel; this.maxHp = 80 + (playerLevel * 40); this.hp = this.maxHp; this.damage = 15 + (playerLevel * 5); this.speed = 3.8; this.originalSpeed = 3.8; this.xp = 30 + (playerLevel * 10); this.score = 500 + (playerLevel * 20); this.hitboxRadius = 1.2; const geo = new THREE.BoxGeometry(2.4, 1.2, 1.2); const mat = new THREE.MeshStandardMaterial({ color: 0x6e1005, roughness: 0.6, metalness: 0.3 }); this.mesh = new THREE.Mesh(geo, mat); this.mesh.position.copy(position); this.mesh.position.y = 0.6; this.mesh.castShadow = true; this.filhotes = []; this.respawnQueue = []; this.attackCooldown = (1.2 - (Math.floor(playerLevel / 5) * 0.05)) * 1000; this.lastAttackTime = 0; this.attackRange = 2.0; this.habilidades = { investida: { cooldown: 5000, lastUsed: 0, isDashing: false, dashTimer: 0, dashDuration: 300, dashSpeed: 20, useCount: 0 }, marca: { cooldown: 8000, lastUsed: 0, isActive: false, duration: 5000, timer: 0 }, rugido: { cooldown: 12000, lastUsed: 0 }, frenesi: { cooldown: 20000, lastUsed: 0, isActive: false, duration: 10000, timer: 0 } }; this.spawnFilhotes(); } spawnFilhotes() { const numFilhotes = 2 + Math.floor(Math.random() * 3); for (let i = 0; i < numFilhotes; i++) { const offset = new THREE.Vector3((Math.random() - 0.5) * 5, 0, (Math.random() - 0.5) * 5); const spawnPos = this.mesh.position.clone().add(offset); const filhote = new FilhoteCao(spawnPos, this.playerLevel, this); this.filhotes.push(filhote); enemies.push(filhote); scene.add(filhote.mesh); } } scheduleRespawnFilhote(filhote) { this.respawnQueue.push({ filhote, timer: 15 }); } updateRespawn(dt) { for (let i = this.respawnQueue.length - 1; i >= 0; i--) { const item = this.respawnQueue[i]; item.timer -= dt; if (item.timer <= 0) { const offset = new THREE.Vector3((Math.random() - 0.5) * 5, 0, (Math.random() - 0.5) * 5); const spawnPos = this.mesh.position.clone().add(offset); item.filhote.respawn(spawnPos); this.respawnQueue.splice(i, 1); } } } investidaDasSombras(target) { const h = this.habilidades.investida; h.lastUsed = Date.now(); h.isDashing = true; h.dashTimer = h.dashDuration; if (!this.habilidades.frenesi.isActive) { h.useCount++; } } marcarAlvo() { const h = this.habilidades.marca; h.lastUsed = Date.now(); h.isActive = true; h.timer = h.duration; createExplosion(this.mesh.position, 10, new THREE.Color(0xffaa00)); } rugidoInfernal() { this.habilidades.rugido.lastUsed = Date.now(); createAreaExplosion(this.mesh.position, 8, this.damage * 1.5, this); this.filhotes.forEach(f => { if (!f.isDestroyed) { f.applyShield(5000, f.maxHp * 0.5); } }); } ativarFrenesi() { const h = this.habilidades.frenesi; if (h.isActive) return; h.isActive = true; h.timer = h.duration; this.mesh.material.emissive.set(0xff0000); } desativarFrenesi() { const h = this.habilidades.frenesi; h.isActive = false; h.lastUsed = Date.now(); this.habilidades.investida.useCount = 0; this.mesh.material.emissive.set(0x000000); } update(dt, player) { if (isGameOver || this.isDestroyed) return; this.updateRespawn(dt); const ms = dt * 1000; const now = Date.now(); if (this.habilidades.frenesi.isActive) { this.habilidades.frenesi.timer -= ms; if (this.habilidades.frenesi.timer <= 0) { this.desativarFrenesi(); } } else { if(this.updateStatus(dt)) return; } if(this.habilidades.marca.isActive) { this.habilidades.marca.timer -= ms; if(this.habilidades.marca.timer <= 0) this.habilidades.marca.isActive = false; } const dist = this.mesh.position.distanceTo(player.mesh.position); if (this.habilidades.investida.useCount >= 3 && now > this.habilidades.frenesi.lastUsed + this.habilidades.frenesi.cooldown && !this.habilidades.frenesi.isActive) { this.ativarFrenesi(); } if (now > this.habilidades.rugido.lastUsed + this.habilidades.rugido.cooldown && dist < 10) { this.rugidoInfernal(); } if (now > this.habilidades.marca.lastUsed + this.habilidades.marca.cooldown) { this.marcarAlvo(); } let investidaCooldown = this.habilidades.frenesi.isActive ? 1000 : this.habilidades.investida.cooldown; if (now > this.habilidades.investida.lastUsed + investidaCooldown && dist < 15 && !this.habilidades.investida.isDashing) { this.investidaDasSombras(player); } if (this.habilidades.investida.isDashing) { this.habilidades.investida.dashTimer -= ms; const dir = player.mesh.position.clone().sub(this.mesh.position).normalize(); this.mesh.position.add(dir.multiplyScalar(this.habilidades.investida.dashSpeed * dt)); if (this.habilidades.investida.dashTimer <= 0) { this.habilidades.investida.isDashing = false; createAreaExplosion(this.mesh.position.clone().add(dir.multiplyScalar(2)), 4, this.damage * 2, this); player.applyStun(1000); } } else { let currentSpeed = this.originalSpeed; if(this.habilidades.marca.isActive) currentSpeed *= 1.5; if(this.habilidades.frenesi.isActive) currentSpeed *= 1.2; if (dist > this.attackRange) { const dir = player.mesh.position.clone().sub(this.mesh.position).normalize(); this.mesh.position.add(dir.multiplyScalar(currentSpeed * dt)); } else { let currentAttackCooldown = this.attackCooldown; let currentDamage = this.damage; if(this.habilidades.frenesi.isActive) { currentAttackCooldown /= 2; currentDamage *= 2.5; } if (now > this.lastAttackTime + currentAttackCooldown) { this.lastAttackTime = now; player.takeDamage(currentDamage); } } } this.mesh.lookAt(player.mesh.position.x, this.mesh.position.y, player.mesh.position.z); } destroy(instigator) { createExplosion(this.mesh.position, 50, this.mesh.material.color); if (instigator?.isPlayer) { instigator.addXp(this.xp); instigator.score += this.score; const buffType = Math.random() < 0.5 ? 'damage' : 'attackSpeed'; const orb = new BuffOrb(this.mesh.position, buffType); orbs.push(orb); scene.add(orb.mesh); } this.filhotes.forEach(f => { if(f) f.destroy(); }); super.destroy(instigator); } }
+        
+        class ChamasAtormentadasZone { constructor(position, owner) { this.owner = owner; this.damagePerSecond = 5 + (player.maxHp * 0.02); this.radius = 3; this.duration = 4000; this.lifeTimer = this.duration; this.damageTick = 1000; this.lastDamageTick = 0; const geo = new THREE.CircleGeometry(this.radius, 32); const mat = new THREE.MeshBasicMaterial({ color: 0x5a189a, transparent: true, opacity: 0.4 }); this.mesh = new THREE.Mesh(geo, mat); this.mesh.position.copy(position); this.mesh.position.y = 0.01; this.mesh.rotation.x = -Math.PI / 2; } update(dt, player) { this.lifeTimer -= dt * 1000; this.lastDamageTick -= dt * 1000; this.mesh.material.opacity = 0.2 + (Math.sin(clock.getElapsedTime() * 10) * 0.2); if (this.lifeTimer <= 0) { this.destroy(); return; } const dist = this.mesh.position.distanceTo(player.mesh.position); if (dist < this.radius && this.lastDamageTick <= 0) { player.takeDamage(this.damagePerSecond, false); this.lastDamageTick = this.damageTick; } } destroy() { if(this.mesh.parent) scene.remove(this.mesh); removeFromArray(dynamicEntities, this); } }
+
+        class RainhaDasTrevas extends Enemy { constructor(position, player) { super(position); this.isRainha = true; this.name = "Rainha das Trevas"; this.maxHp = 1000 + (player.maxHp * 0.5); this.hp = this.maxHp; this.baseDamage = 40 + (player.maxHp * 0.1); this.damage = 10; this.speed = 2.8; this.originalSpeed = 2.8; this.xp = 2500; this.score = 5000; this.hitboxRadius = 1.5; const geo = new THREE.CylinderGeometry(0.8, 0.8, 3, 6); const mat = new THREE.MeshStandardMaterial({ color: 0x3a0ca3, emissive: 0x5a189a, emissiveIntensity: 0.7, metalness: 0.4, roughness: 0.3 }); this.mesh = new THREE.Mesh(geo, mat); this.mesh.position.copy(position); this.mesh.position.y = 1.5; this.mesh.castShadow = true; const auraGeo = new THREE.SphereGeometry(this.hitboxRadius + 0.5, 32, 16); const auraMat = new THREE.MeshBasicMaterial({ color: 0x9d4edd, transparent: true, opacity: 0.2, wireframe: true }); this.auraMesh = new THREE.Mesh(auraGeo, auraMat); this.mesh.add(this.auraMesh); const shieldGeo = new THREE.SphereGeometry(this.hitboxRadius + 0.2, 16, 16); const shieldMat = new THREE.MeshStandardMaterial({ color: 0x10002b, emissive: 0x3c096c, transparent: true, opacity: 0.8 }); this.shieldAura = new THREE.Mesh(shieldGeo, shieldMat); this.shieldAura.visible = false; this.mesh.add(this.shieldAura); this.darkParticles = []; this.habilidades = { prisaoSombria: { cooldown: 8000, lastUsed: 0 }, chamasAtormentadas: { cooldown: 10000, lastUsed: 0 }, escudoDasAlmas: { cooldown: 12000, lastUsed: 0, isActive: false, timer: 0, duration: 5000 }, devastacaoSombria: { cooldown: 20000, lastUsed: 0, isCharging: false, chargeTimer: 0, chargeDuration: 1500, chargeVisual: null } }; } usarPrisaoSombria(target) { this.habilidades.prisaoSombria.lastUsed = Date.now(); const dir = target.mesh.position.clone().sub(this.mesh.position).normalize(); const p = new Projectile(this.mesh.position.clone(), dir, this, target); p.speed = 20; p.specialEffect = 'prisao'; p.damage = target.maxHp * 0.15; p.mesh.material.color.set(0x5a189a); p.mesh.material.emissive.set(0x5a189a); enemyProjectiles.push(p); scene.add(p.mesh); } usarChamasAtormentadas(target) { this.habilidades.chamasAtormentadas.lastUsed = Date.now(); const zone = new ChamasAtormentadasZone(target.mesh.position.clone(), this); dynamicEntities.push(zone); scene.add(zone.mesh); } ativarEscudoDasAlmas() { const h = this.habilidades.escudoDasAlmas; h.lastUsed = Date.now(); h.isActive = true; h.timer = h.duration; this.speed = this.originalSpeed * 1.30; this.shieldAura.visible = true; } usarDevastacaoSombria() { const h = this.habilidades.devastacaoSombria; h.lastUsed = Date.now(); h.isCharging = true; h.chargeTimer = h.chargeDuration; const chargeGeo = new THREE.CircleGeometry(5, 64); const chargeMat = new THREE.MeshBasicMaterial({ color: 0x5a189a, transparent: true, opacity: 0.3 }); h.chargeVisual = new THREE.Mesh(chargeGeo, chargeMat); h.chargeVisual.position.copy(this.mesh.position); h.chargeVisual.position.y = 0.01; h.chargeVisual.rotation.x = -Math.PI / 2; scene.add(h.chargeVisual); } update(dt, player) { if (isGameOver || this.isDestroyed || this.updateStatus(dt)) return; const now = Date.now(); const ms = dt * 1000; const dist = this.mesh.position.distanceTo(player.mesh.position); this.mesh.position.y = 1.5 + Math.sin(clock.getElapsedTime() * 1.5) * 0.2; this.mesh.rotation.y += dt * 0.2; this.auraMesh.material.opacity = 0.15 + Math.sin(clock.getElapsedTime() * 3) * 0.1; if (Math.random() > 0.8) { const vel = new THREE.Vector3((Math.random() - 0.5) * 0.5, -Math.random() * 2, (Math.random() - 0.5) * 0.5); const p = new Particle(this.mesh.position, vel, new THREE.Color(0x5a189a), 1.5); particles.push(p); scene.add(p.mesh); } const h_escudo = this.habilidades.escudoDasAlmas; if (h_escudo.isActive) { h_escudo.timer -= ms; if (h_escudo.timer <= 0) { h_escudo.isActive = false; this.speed = this.originalSpeed; this.shieldAura.visible = false; } } const h_ultimate = this.habilidades.devastacaoSombria; if (h_ultimate.isCharging) { h_ultimate.chargeTimer -= ms; const chargeProgress = 1 - (h_ultimate.chargeTimer / h_ultimate.chargeDuration); if (h_ultimate.chargeVisual) h_ultimate.chargeVisual.material.opacity = 0.1 + chargeProgress * 0.4; if (h_ultimate.chargeTimer <= 0) { h_ultimate.isCharging = false; if(h_ultimate.chargeVisual) scene.remove(h_ultimate.chargeVisual); createAreaExplosion(this.mesh.position, 5.5, 0, this); if (this.mesh.position.distanceTo(player.mesh.position) <= 5) { player.takeDamage(player.maxHp * 0.30); player.applyStun(1500); } } } if (!h_ultimate.isCharging) { if (dist < 6 && now > h_ultimate.lastUsed + h_ultimate.cooldown) { this.usarDevastacaoSombria(); } else if (now > h_escudo.lastUsed + h_escudo.cooldown && !h_escudo.isActive) { this.ativarEscudoDasAlmas(); } else if (dist < 15 && now > this.habilidades.chamasAtormentadas.lastUsed + this.habilidades.chamasAtormentadas.cooldown) { this.usarChamasAtormentadas(player); } else if (dist < 25 && now > this.habilidades.prisaoSombria.lastUsed + this.habilidades.prisaoSombria.cooldown) { this.usarPrisaoSombria(player); } } if (!h_ultimate.isCharging) { const dir = player.mesh.position.clone().sub(this.mesh.position).normalize(); this.mesh.position.add(dir.multiplyScalar(this.speed * dt)); this.mesh.lookAt(player.mesh.position.x, this.mesh.position.y, player.mesh.position.z); } } destroy(instigator) { gameManager.isRainhaAlive = false; createExplosion(this.mesh.position, 80, this.mesh.material.color); if (instigator?.isPlayer) { instigator.addXp(this.xp); instigator.score += this.score; const buffAura = new AuraDeRecompensa(this.mesh.position, 'rainha_buff', { attack_speed: 1.25, ability_damage: 1.15 }, 30000, new THREE.Color(0x9d4edd)); dynamicEntities.push(buffAura); scene.add(buffAura.mesh); } gameManager.activeBoss = null; super.destroy(instigator); } }
+        
+        class AuraDeRecompensa { constructor(position, buffType, effects, duration, color) { this.radius = 2.5; this.duration = 5000; this.lifeTimer = this.duration; this.isConsumed = false; this.buffInfo = { type: buffType, effects: effects, duration: duration }; const geo = new THREE.TorusGeometry(this.radius - 0.5, 0.2, 16, 100); const mat = new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: 0.8 }); this.mesh = new THREE.Mesh(geo, mat); this.mesh.position.copy(position); this.mesh.position.y = 0.5; this.mesh.rotation.x = -Math.PI / 2; } update(dt, player) { this.lifeTimer -= dt * 1000; this.mesh.rotation.z += dt * 2; if (this.lifeTimer <= 0) { this.destroy(); return; } const dist = this.mesh.position.distanceTo(player.mesh.position); if (!this.isConsumed && dist < this.radius) { player.applyTimedBuff(this.buffInfo.type, this.buffInfo.duration/1000, this.buffInfo.effects); this.isConsumed = true; this.destroy(); } } destroy() { if(this.mesh.parent) scene.remove(this.mesh); removeFromArray(dynamicEntities, this); } }
+        
+        class TheMightyOne extends Enemy { constructor(position) { super(position); this.name = "O Poderoso"; this.maxHp = 100000; this.hp = this.maxHp; this.speed = 0.3; this.originalSpeed = 0.3; this.xp = 30000; this.score = 50000; this.hitboxRadius = 4.0; this.auraRadius = 25.0; this.damageBonus = 1.0; this.attackSpeedBonus = 1.0; this.isTheMightyOne = true; const geo = new THREE.BoxGeometry(this.hitboxRadius * 2, this.hitboxRadius * 2, this.hitboxRadius * 2); const mat = new THREE.MeshStandardMaterial({ color: 0x0a0a0a, emissive: new THREE.Color("var(--poderoso-color)"), emissiveIntensity: 1, metalness: 0.9, roughness: 0.2 }); this.mesh = new THREE.Mesh(geo, mat); this.mesh.position.copy(position); this.mesh.position.y = this.hitboxRadius; this.mesh.castShadow = true; const auraGeo = new THREE.SphereGeometry(this.auraRadius, 32, 32); const auraMat = new THREE.MeshBasicMaterial({ color: new THREE.Color("var(--poderoso-color)"), transparent: true, opacity: 0.1, wireframe: true }); this.auraMesh = new THREE.Mesh(auraGeo, auraMat); this.mesh.add(this.auraMesh); this.unstableParticles = []; for (let i = 0; i < 50; i++) { const pGeo = new THREE.SphereGeometry(0.2, 4, 4); const pMat = new THREE.MeshBasicMaterial({ color: new THREE.Color("var(--poderoso-color)")}); const pMesh = new THREE.Mesh(pGeo, pMat); this.mesh.add(pMesh); this.unstableParticles.push({mesh: pMesh, angle: Math.random() * Math.PI * 2, speed: Math.random() * 0.5 + 0.2, distance: this.hitboxRadius + Math.random() * 2}); } } init() { uiManager.showEventMessage("⚠️ O Poderoso chegou… O mundo está colapsando!"); this.triggerWorldCollapseVisuals(true); this.absorbAllOrbs(); this.spawnMinions(); } triggerWorldCollapseVisuals(isStarting) { if (isStarting) { scene.background.set(0x050008); scene.fog.color.set(0x050008); gameManager.shakeCamera = { duration: 3, intensity: 0.3 }; } else { scene.background.set(originalSceneColors.bg); scene.fog.color.set(originalSceneColors.fog); } } absorbAllOrbs() { const orbsToAbsorb = orbs.filter(o => o instanceof XpOrb); orbsToAbsorb.forEach(orb => { this.damageBonus += 0.005; this.attackSpeedBonus += 0.005; const flyTime = 0.5; let elapsed = 0; const startPos = orb.mesh.position.clone(); const flyAnim = () => { elapsed += clock.getDelta(); const t = Math.min(1, elapsed / flyTime); if(!orb.mesh) return; orb.mesh.position.lerpVectors(startPos, this.mesh.position, t); if (t < 1) requestAnimationFrame(flyAnim); else orb.destroy(); }; flyAnim(); }); } spawnMinions() { const superBoss = new SuperBoss(getSpawnPosition(), 20000, 5); enemies.push(superBoss); scene.add(superBoss.mesh); gameManager.activeBoss = superBoss; const g1 = new GuardianGuerreiro(getSpawnPosition(), true); enemies.push(g1); scene.add(g1.mesh); const g2 = new GuardianMago(getSpawnPosition(), true); enemies.push(g2); scene.add(g2.mesh); const g3 = new GuardianArqueiro(getSpawnPosition(), true); enemies.push(g3); scene.add(g3.mesh); } update(dt, player) { if(this.isDestroyed) return; this.mesh.rotation.x += dt * 0.1; this.mesh.rotation.y += dt * 0.1; this.unstableParticles.forEach(p => { p.angle += p.speed * dt; p.mesh.position.set( Math.cos(p.angle) * p.distance, Math.sin(p.angle * 2) * p.distance / 2, Math.sin(p.angle) * p.distance ); }); playerProjectiles.forEach(p => { if (p.mesh.position.distanceTo(this.mesh.position) < this.auraRadius) { p.direction.reflect(this.mesh.position.clone().sub(p.mesh.position).normalize()).negate(); } }); const dir = player.mesh.position.clone().sub(this.mesh.position).normalize(); this.mesh.position.add(dir.multiplyScalar(this.speed * dt)); } destroy(instigator) { this.triggerWorldCollapseVisuals(false); createExplosion(this.mesh.position, 200, new THREE.Color("var(--poderoso-color)")); if (instigator?.isPlayer) { instigator.addXp(this.xp); instigator.score += this.score; } gameManager.onTheMightyOneDefeated(); super.destroy(instigator); } }
+        
+        // --- FIM DA REORDENAÇÃO ---
+
+        class Projectile { 
+            constructor(start, dir, owner, target) { 
+                this.owner = owner;
+                const isPlayer = owner instanceof Player;
+                this.hitboxRadius = isPlayer ? 0.15 : 0.2;
+                const geo = new THREE.SphereGeometry(this.hitboxRadius, 8, 8);
+                let color = 0xffffff;
+                if (isPlayer) color = 0x00BFFF;
+                else if (owner instanceof GuardianMago) color = 0x5588ff;
+                else if (owner instanceof GuardianArqueiro) color = 0x90ee90;
+                else if (owner instanceof SuperBoss) color = 0xff00ff;
+                else if (owner instanceof PlantaCarnivoraRainha) color = 0x4c956c;
+                else if (owner instanceof FeiticeiroImortalDasTrevas) color = 0x8A2BE2;
+                else if (owner instanceof LichKing) color = 0xADD8E6;
+                else color = owner.mesh?.material.color.getHex() || 0xffffff;
+                const mat = new THREE.MeshStandardMaterial({ color: color, emissive: color, emissiveIntensity: 2 });
+                this.mesh = new THREE.Mesh(geo, mat);
+                this.mesh.position.copy(start);
+                this.direction = dir;
+                this.speed = 15;
+                this.damage = (owner.getDamage && typeof owner.getDamage === 'function' && !isPlayer) ? owner.getDamage(target || player) : owner.damage || (isPlayer ? owner.getDamage() : 10);
+                this.lifetime = 3;
+                this.specialEffect = null;
+                this.isBuffed = null;
+                this.explosionRadius = 0;
+                this.bleedDamage = 0;
+            } 
+            update(dt) { 
+                if (this.specialEffect === 'bouncingBomb' || this.specialEffect === 'sementeVenenosa') { 
+                    this.mesh.position.add(this.velocity.clone().multiplyScalar(dt));
+                    this.velocity.y -= 9.8 * dt;
+                    if (this.mesh.position.y < this.hitboxRadius) { 
+                        this.destroy();
+                    }
+                } else { 
+                    this.mesh.position.add(this.direction.clone().multiplyScalar(this.speed * dt));
+                } 
+                this.lifetime -= dt;
+                if (this.lifetime <= 0) this.destroy();
+            } 
+            destroy() { 
+                if(this.specialEffect === 'sementeVenenosa') { 
+                    const zone = new EsporoVenenosoZone(this.mesh.position, this.owner);
+                    dynamicEntities.push(zone);
+                    scene.add(zone.mesh);
+                } 
+                if (this.explosionRadius > 0 || this.specialEffect === 'bouncingBomb') { 
+                    const radius = this.specialEffect === 'bouncingBomb' ? 2 : this.explosionRadius;
+                    createAreaExplosion(this.mesh.position, radius, this.damage, this.owner);
+                    if (this.owner !== player && player.mesh.position.distanceTo(this.mesh.position) < radius) {
+                        player.takeDamage(this.damage, false);
+                    } 
+                } 
+                if (this.mesh.parent) scene.remove(this.mesh);
+                removeFromArray(this.owner?.isPlayer ? playerProjectiles : enemyProjectiles, this);
+            } 
+        }
+        
+        class HealingTower { constructor() { const tGeo = new THREE.CylinderGeometry(0.5, 0.7, 3, 16); const tMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x00ffff, emissiveIntensity: 0.5 }); this.mesh = new THREE.Mesh(tGeo, tMat); this.mesh.position.set(0, 1.5, 0); this.mesh.castShadow = true; const aGeo = new THREE.CircleGeometry(4, 32); const aMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.2 }); this.aura = new THREE.Mesh(aGeo, aMat); this.aura.rotation.x = -Math.PI / 2; this.aura.position.set(0, 0.01, 0); this.auraRadius = 4; this.healCooldown = 3000; this.lastHealTime = 0; } update(dt, player) { this.aura.material.opacity = Math.sin(clock.getElapsedTime() * 2) * 0.1 + 0.15; if (isGameOver) return; if (this.mesh.position.distanceTo(player.mesh.position) <= this.auraRadius) { const now = Date.now(); if (now > this.lastHealTime + this.healCooldown) { this.lastHealTime = now; this.spawnOrb(player); } } } spawnOrb(p) { const orb = new HealingOrb(this.mesh.position, p); orbs.push(orb); scene.add(orb.mesh); } }
+        
+        class HealingOrb { constructor(start, target) { const geo = new THREE.SphereGeometry(0.2, 16, 16); const mat = new THREE.MeshStandardMaterial({ color: 0x00ff00, emissive: 0x00ff00, emissiveIntensity: 2 }); this.mesh = new THREE.Mesh(geo, mat); this.mesh.position.copy(start); this.mesh.position.y = 1; this.target = target; this.speed = 8; this.healAmount = target.maxHp * 0.08; this.hitboxRadius = 0.2; } update(dt) { if (isGameOver || !this.target?.mesh) { this.destroy(); return; } const dir = this.target.mesh.position.clone().sub(this.mesh.position).normalize(); this.mesh.position.add(dir.multiplyScalar(this.speed * dt)); if (this.mesh.position.distanceTo(this.target.mesh.position) < 0.6) { this.target.heal(this.healAmount); this.destroy(); } } destroy() { if(this.mesh.parent) scene.remove(this.mesh); removeFromArray(orbs, this); } }
+        
+        class XpOrb { constructor(pos) { const geo = new THREE.SphereGeometry(0.25, 16, 16); const mat = new THREE.MeshStandardMaterial({ color: 0x2ecc71, emissive: 0x2ecc71, emissiveIntensity: 0.5 }); this.mesh = new THREE.Mesh(geo, mat); this.mesh.position.copy(pos); this.hitboxRadius = 1.0; } update() { this.mesh.position.y = Math.sin(clock.getElapsedTime() * 2 + this.mesh.position.x) * 0.1 + 0.5; } destroy() { if(this.mesh.parent) scene.remove(this.mesh); removeFromArray(orbs, this); } }
+        
+        class BuffOrb { constructor(pos, buffType) { this.buffType = buffType; let color; switch (buffType) { case 'damage': color = 0xff4500; break; case 'attackSpeed': color = 0x1e90ff; break; case 'essencia_negra': color = 0x4B0082; break; default: color = 0xffffff; } const geo = new THREE.SphereGeometry(0.3, 16, 16); const mat = new THREE.MeshStandardMaterial({ color: color, emissive: color, emissiveIntensity: 1.5 }); this.mesh = new THREE.Mesh(geo, mat); this.mesh.position.copy(pos); this.mesh.position.y = 1; this.hitboxRadius = 0.8; } update() { this.mesh.rotation.y += 0.05; this.mesh.position.y = Math.sin(clock.getElapsedTime() * 3 + this.mesh.position.x) * 0.2 + 1; } destroy() { scene.remove(this.mesh); removeFromArray(orbs, this); } }
+        
+        class Particle { constructor(pos, vel, color, lifetime) { const geo = new THREE.BoxGeometry(0.1, 0.1, 0.1); const mat = new THREE.MeshBasicMaterial({ color: color }); this.mesh = new THREE.Mesh(geo, mat); this.mesh.position.copy(pos); this.velocity = vel; this.lifetime = lifetime; this.age = 0; } update(dt) { this.age += dt; this.mesh.position.add(this.velocity.clone().multiplyScalar(dt)); this.velocity.y -= 9.8 * dt; if (this.age >= this.lifetime) this.destroy(); } destroy() { if(this.mesh.parent) scene.remove(this.mesh); removeFromArray(particles, this); } }
+		
+        // --- Classes de Gerenciamento ---
+        class GameManager {
+            constructor() {
+                this.isPaused = false;
+                this.gameTime = 0; this.globalMultiplier = 1; this.collapseLevel = 0;
+                this.shakeCamera = { duration: 0, intensity: 0 };
+                this.timers = {
+                    globalScale: 60, spawnPurpleCube: 5, spawnRedCone: 30, spawnGuardian: 240, spawnCaoDosInfernos: 120,
+                    spawnRainha: 300, 
+                    spawnPlantaCarnivora: 210,
+                    spawnFeiticeiro: 420,
+                    spawnLichKing: 600
+                };
+                this.isRainhaAlive = false; 
+                this.isPlantaCarnivoraAlive = false;
+                this.eventTimers = { superBoss: { time: 180, triggered: false }, theMightyOne: { nextSpawnTime: 600, isAlive: false, instance: null } };
+                this.respawnQueue = []; this.activeBoss = null;
+                this.guardianTypes = [GuardianGuerreiro, GuardianMago, GuardianArqueiro];
+                this.defenderTypes = [BruxaDoGelo, MestraDaIlusao, BombardeiroInsano];
+                this.upgradeQueue = [];
+            }
+            requestUpgrade(level) { this.upgradeQueue.push(level); if (!this.isPaused) this.processUpgradeQueue(); }
+            processUpgradeQueue() { if (this.upgradeQueue.length > 0) { this.pause(); const level = this.upgradeQueue.shift(); uiManager.showUpgradePanel(level); } }
+            pause() { this.isPaused = true; }
+            unpause() { this.isPaused = false; this.processUpgradeQueue(); }
+            update(dt) { if (isGameOver) return; this.gameTime += dt; this.updateSpawners(dt); this.updateRespawns(dt); this.checkEvents(dt); }
+            updateSpawners(dt) {
+                this.timers.globalScale -= dt; if (this.timers.globalScale <= 0) { this.timers.globalScale = 60; }
+                this.timers.spawnPurpleCube -= dt; if (this.timers.spawnPurpleCube <= 0) { this.timers.spawnPurpleCube = 5; for (let i = 0; i < 2; i++) spawnPurpleCube(); }
+                this.timers.spawnRedCone -= dt; if (this.timers.spawnRedCone <= 0) { this.timers.spawnRedCone = 30; gerarConeVermelhoComDefensor(); }
+                this.timers.spawnGuardian -= dt; if (this.gameTime > 240 && this.timers.spawnGuardian <= 0) { this.timers.spawnGuardian = 240; let spawnCount = 1; if (this.gameTime >= 1200) spawnCount = 3; else if (this.gameTime >= 600) spawnCount = 2; for (let i = 0; i < spawnCount; i++) this.spawnRandomGuardian(); }
+                this.timers.spawnCaoDosInfernos -= dt; if (this.timers.spawnCaoDosInfernos <= 0) { this.timers.spawnCaoDosInfernos = 120; let spawnCount = 1; if (this.gameTime >= 1200) spawnCount = 2; for (let i = 0; i < spawnCount; i++) spawnCaoDosInfernos(); uiManager.showEventMessage("O CÃO DOS INFERNOS ESTÁ À CAÇA!"); }
+                this.timers.spawnRainha -= dt; if (this.timers.spawnRainha <= 0) { this.timers.spawnRainha = 300; if (!this.isRainhaAlive) { this.isRainhaAlive = true; const rainha = new RainhaDasTrevas(getSpawnPosition(), player); enemies.push(rainha); scene.add(rainha.mesh); this.activeBoss = rainha; uiManager.showEventMessage("⚠️ A Rainha das Trevas emergiu das sombras… prepare-se!"); } }
+                this.timers.spawnPlantaCarnivora -= dt; if (this.timers.spawnPlantaCarnivora <= 0) { this.timers.spawnPlantaCarnivora = 210; if (!this.isPlantaCarnivoraAlive) { this.isPlantaCarnivoraAlive = true; const planta = new PlantaCarnivoraRainha(getSpawnPosition(), player); enemies.push(planta); scene.add(planta.mesh); this.activeBoss = planta; uiManager.showEventMessage("⚠️ O chão treme... A Planta Carnívora Rainha despertou!"); } }
+                this.timers.spawnFeiticeiro -= dt; if (this.timers.spawnFeiticeiro <= 0) { this.timers.spawnFeiticeiro = 420; const existingFeiticeiro = enemies.find(e => e.isFeiticeiroImortal); if (!existingFeiticeiro) { const feiticeiro = new FeiticeiroImortalDasTrevas(getSpawnPosition(), player); enemies.push(feiticeiro); scene.add(feiticeiro.mesh); this.activeBoss = feiticeiro; uiManager.showEventMessage("⚠️ Um feitiço ancestral está em ação... Lord Vouldemord chegou."); } }
+                this.timers.spawnLichKing -= dt; if(this.timers.spawnLichKing <= 0) { this.timers.spawnLichKing = 600; const existingLichKing = enemies.find(e => e.isLichKing); if(!existingLichKing) { const lichKing = new LichKing(getSpawnPosition(), player); enemies.push(lichKing); scene.add(lichKing.mesh); this.activeBoss = lichKing; uiManager.showEventMessage("⚠️ O frio absoluto tomou conta... O Lich King se ergue da tumba!"); } }
+            }
+            checkEvents(dt) { const superBossEvent = this.eventTimers.superBoss; if (!superBossEvent.triggered && this.gameTime >= superBossEvent.time) { superBossEvent.triggered = true; this.activeBoss = spawnSuperBoss(); uiManager.showEventMessage("Uma força sobrenatural se manifesta!"); } const mightyOneEvent = this.eventTimers.theMightyOne; if (!mightyOneEvent.isAlive && this.gameTime >= mightyOneEvent.nextSpawnTime) { this.spawnTheMightyOne(); } }
+            spawnTheMightyOne() { const event = this.eventTimers.theMightyOne; event.isAlive = true; const boss = new TheMightyOne(getSpawnPosition()); event.instance = boss; enemies.push(boss); scene.add(boss.mesh); boss.init(); }
+            onTheMightyOneDefeated() { uiManager.showEventMessage("🌀 O Poderoso caiu… mas algo no mundo mudou para sempre…"); const event = this.eventTimers.theMightyOne; event.isAlive = false; event.instance = null; event.nextSpawnTime = this.gameTime + 600; this.triggerGlobalCollapse(); }
+            triggerGlobalCollapse() { this.collapseLevel++; this.globalMultiplier *= 20; enemies.forEach(e => { if (e && !e.isTheMightyOne) { e.applyGlobalBuff(20); } }); }
+            spawnRandomGuardian() { const GuardianClass = this.guardianTypes[Math.floor(Math.random() * this.guardianTypes.length)]; const e = new GuardianClass(getSpawnPosition()); enemies.push(e); scene.add(e.mesh); uiManager.showEventMessage(`UM ${e.name.toUpperCase()} APARECEU!`); }
+            updateRespawns(dt) { for (let i = this.respawnQueue.length - 1; i >= 0; i--) { const item = this.respawnQueue[i]; item.timer -= dt; if (item.timer <= 0) { item.enemy.respawn(); this.respawnQueue.splice(i, 1); } } }
+            scheduleRespawn(tower, delay) { this.respawnQueue.push({ enemy: tower, timer: delay }); }
+            endGame() { isGameOver = true; if (animationFrameId) cancelAnimationFrame(animationFrameId); uiManager.showGameOverScreen(player.score, this.gameTime, this.collapseLevel); }
+        }
+        class UIManager {
+            constructor() {
+                this.upgradePanel = document.getElementById('upgrade-panel'); this.upgradeTitle = document.getElementById('upgrade-title'); this.upgradeDesc = document.getElementById('upgrade-description');
+                this.upgradeConfirmBtn = document.getElementById('upgrade-confirm-button'); this.upgradeSkipBtn = document.getElementById('upgrade-skip-button');
+                this.passiveLevelValue = document.getElementById('passive-level-value'); this.levelValue = document.getElementById('level-value');
+                this.hpBar = document.getElementById('hp-bar'); this.xpBar = document.getElementById('xp-bar'); this.scoreValue = document.getElementById('score-value');
+                this.timeValue = document.getElementById('time-value'); this.shieldHudItem = document.getElementById('shield-hud-item'); this.shieldBar = document.getElementById('shield-bar');
+                this.skillSlots = { q: document.getElementById('skill-q'), w: document.getElementById('skill-w'), e: document.getElementById('skill-e'), r: document.getElementById('skill-r') };
+                this.bossHud = document.getElementById('boss-hud'); this.bossNameLabel = document.getElementById('boss-name-label'); this.bossHpBar = document.getElementById('boss-hp-bar');
+                this.buffDisplay = document.getElementById('buff-display'); this.buffName = document.getElementById('buff-name'); this.buffTimer = document.getElementById('buff-timer');
+                this.collapseValue = document.getElementById('collapse-value');
+                this.poderosoHud = document.getElementById('poderoso-hud'); this.poderosoHpBar = document.getElementById('poderoso-hp-bar'); this.poderosoHpText = document.getElementById('poderoso-hp-text');
+                this.poderosoPowerBar = document.getElementById('poderoso-power-bar'); this.poderosoPowerText = document.getElementById('poderoso-power-text');
+                this.blindOverlay = document.getElementById('blind-overlay');
+            }
+            update(player, gameManager){
+                if (!player || !gameManager) return;
+                this.passiveLevelValue.textContent = player.skillLevels.passive; this.levelValue.textContent = player.level; this.scoreValue.textContent = player.score;
+                this.timeValue.textContent = this.formatTime(gameManager.gameTime); this.collapseValue.textContent = gameManager.globalMultiplier.toExponential(0);
+                const hpP = player.maxHp > 0 ? (player.hp / player.maxHp) * 100 : 0; this.hpBar.style.width = `${hpP}%`; this.hpBar.innerHTML = `<div class="progress-bar-text">${Math.ceil(player.hp)} / ${Math.ceil(player.maxHp)}</div>`; this.hpBar.classList.toggle('low', hpP < 30);
+                const xpP = player.xpToNextLevel > 0 ? (player.xp / player.xpToNextLevel) * 100 : 0; this.xpBar.style.width = `${xpP}%`; this.xpBar.innerHTML = `<div class="progress-bar-text">${Math.ceil(player.xp)} / ${player.xpToNextLevel}</div>`;
+                const shieldSkill = player.skills.e; if (shieldSkill.isActive && shieldSkill.shieldHp > 0) { this.shieldHudItem.style.display = 'block'; const sP = shieldSkill.maxShieldHp > 0 ? (shieldSkill.shieldHp / shieldSkill.maxShieldHp) * 100 : 0; this.shieldBar.style.width = `${sP}%`; this.shieldBar.innerHTML = `<div class="progress-bar-text">${Math.ceil(shieldSkill.shieldHp)}</div>`; } else this.shieldHudItem.style.display = 'none';
+                if (gameManager.activeBoss && !gameManager.activeBoss.isDestroyed) { this.bossHud.style.display = 'flex'; this.bossNameLabel.textContent = gameManager.activeBoss.name; const bossHpP = gameManager.activeBoss.maxHp > 0 ? (gameManager.activeBoss.hp / gameManager.activeBoss.maxHp) * 100 : 0; this.bossHpBar.style.width = `${bossHpP}%`; this.bossHpBar.innerHTML = `<div class="progress-bar-text">${Math.ceil(gameManager.activeBoss.hp)} / ${Math.ceil(gameManager.activeBoss.maxHp)}</div>`; } else { this.bossHud.style.display = 'none'; if (gameManager.activeBoss?.isDestroyed) gameManager.activeBoss = null; }
+                const mightyOne = gameManager.eventTimers.theMightyOne.instance; if(mightyOne && mightyOne.hp > 0 && !mightyOne.isDestroyed) { this.poderosoHud.style.display = 'flex'; const hpP = (mightyOne.hp / mightyOne.maxHp) * 100; this.poderosoHpBar.style.width = `${hpP}%`; this.poderosoHpText.textContent = `${Math.ceil(mightyOne.hp)} / ${mightyOne.maxHp}`; const powerP = Math.min(100, (mightyOne.damageBonus - 1) * 200); this.poderosoPowerBar.style.width = `${powerP}%`; this.poderosoPowerText.textContent = `Poder Acumulado: Dano x${mightyOne.damageBonus.toFixed(2)}`; } else { this.poderosoHud.style.display = 'none'; }
+                let finalBuffText = '';
+                if (player.activeBuff.type) { finalBuffText += player.activeBuff.type.charAt(0).toUpperCase() + player.activeBuff.type.slice(1) + ` (${(player.activeBuff.timer / 1000).toFixed(1)}s)`; }
+                if (player.tempBuff.type) { const tempBuffName = player.tempBuff.type === 'damage' ? 'Dano+' : 'Vel. Atq+'; if(finalBuffText !== '') finalBuffText += ' | '; finalBuffText += tempBuffName + ` (${(player.tempBuff.timer / 1000).toFixed(1)}s)`; } 
+                player.timedBuffs.forEach(buff => { 
+                    let buffName = ''; 
+                    if (buff.type === 'rainha_buff') buffName = 'Sombra Corrompida'; 
+                    else if (buff.type === 'planta_buff') buffName = 'Benção da Flora'; 
+                    else if (buff.type === 'essencia_negra') buffName = 'Essência do Medo';
+                    else if (buff.type === 'coroa_lich_buff') buffName = 'Coroa do Lich';
+                    else if (buff.type === 'lamina_geada_buff') buffName = 'Lâmina da Geada';
+                    else if (buff.type === 'fragmento_morte_buff') buffName = 'Fragmento da Morte';
+                    else if (buff.type === 'talisma_quebrado_buff') buffName = 'Talismã Quebrado';
+                    if (buffName) { if(finalBuffText !== '') finalBuffText += ' | '; finalBuffText += `${buffName} (${(buff.timer / 1000).toFixed(1)}s)`; }
+                });
+                if(finalBuffText !== '') { this.buffDisplay.style.display = 'block'; this.buffName.textContent = finalBuffText; } else { this.buffDisplay.style.display = 'none'; }
+                const now = Date.now();
+                for (const key in player.skills) { 
+                    if (!player.skills.hasOwnProperty(key) || !this.skillSlots[key]) continue;
+                    const skill = player.skills[key]; const slot = this.skillSlots[key]; 
+                    let currentCooldown = skill.cooldown; const essenciaNegraBuff = player.timedBuffs.find(b => b.type === 'essencia_negra'); if (essenciaNegraBuff) { currentCooldown *= (1 - essenciaNegraBuff.effects.cooldown_reduction); }
+                    const rem = skill.lastUsed + currentCooldown - now; let cdDiv = slot.querySelector('.skill-cooldown');
+                    if (rem > 0) { if (!cdDiv) { cdDiv = document.createElement('div'); cdDiv.className = 'skill-cooldown'; slot.appendChild(cdDiv); } cdDiv.textContent = (rem / 1000).toFixed(1); } else if (cdDiv) { slot.removeChild(cdDiv); }
+                }
+            }
+            toggleBlindEffect(isActive) { if (isActive) { this.blindOverlay.classList.add('active'); } else { this.blindOverlay.classList.remove('active'); } }
+            showUpgradePanel(level) { const upgradeMap = { 5: { key: 'q', name: 'Dash Cone' }, 10: { key: 'w', name: 'Repulsão' }, 15: { key: 'e', name: 'Escudo' }, 20: { key: 'r', name: 'Ultimate' }, }; const upgradeInfo = upgradeMap[level]; if (!upgradeInfo) { this.hideUpgradePanel(); return; }; const nextSkillLevel = player.skillLevels[upgradeInfo.key] + 1; const descriptions = { q: ["Dash 50% mais longo + cone com área ampliada.", "Dash causa explosão de impacto ao final (200% dano)."], w: ["Também empurra inimigos próximos.", "Projéteis repelidos se tornam seus aliados."], e: ["Ganha velocidade de movimento com escudo ativo.", "Explosão ao fim do escudo baseada no dano absorvido."], r: ["Aura causa queimadura em área.", "Duração ampliada e +50% de velocidade de ataque."], }; this.upgradeTitle.textContent = `Evoluir ${upgradeInfo.name}? (Nv. ${nextSkillLevel})`; this.upgradeDesc.textContent = descriptions[upgradeInfo.key][nextSkillLevel - 2] || "Habilidade no nível máximo!"; this.upgradeConfirmBtn.onclick = () => { player.upgradeSkill(upgradeInfo.key); this.hideUpgradePanel(); }; this.upgradeSkipBtn.onclick = () => this.hideUpgradePanel(); this.upgradePanel.style.display = 'flex'; }
+            hideUpgradePanel() { this.upgradePanel.style.display = 'none'; gameManager.unpause(); }
+            formatTime(s) { const m = Math.floor(s / 60).toString().padStart(2, '0'); const sec = Math.floor(s % 60).toString().padStart(2, '0'); return `${m}:${sec}`; }
+            showEventMessage(msg) { const e = document.getElementById('event-message'); e.textContent = msg; e.classList.add('show'); setTimeout(() => e.classList.remove('show'), 5000); }
+            showGameOverScreen(score, time, collapseLevel) { 
+                document.getElementById('final-score-value').textContent = score; 
+                document.getElementById('final-time-value').textContent = this.formatTime(time); 
+                document.getElementById('final-collapse-level').textContent = collapseLevel; 
+                document.getElementById('game-over-screen').style.display = 'flex'; 
+
+                // 🆕 Início - Chamada para postar score e atualizar ranking
+                window.rankingManager.postScore(playerName, score);
+                // 🆕 Fim - Chamada para postar score e atualizar ranking
+            }
+        }
+
+        // --- Inicialização e Loop Principal ---
+        function init() {
+            isGameOver = false; scene = new THREE.Scene(); scene.background = new THREE.Color(originalSceneColors.bg); scene.fog = new THREE.Fog(originalSceneColors.fog, 50, 100);
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000); renderer = new THREE.WebGLRenderer({ antialias: true }); clock = new THREE.Clock();
+            mousePosition = new THREE.Vector2(); groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+            renderer.setSize(window.innerWidth, window.innerHeight); renderer.shadowMap.enabled = true; document.body.appendChild(renderer.domElement);
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.4); scene.add(ambientLight);
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.6); dirLight.position.set(15, 25, 10); dirLight.castShadow = true;
+            dirLight.shadow.camera.top = 40; dirLight.shadow.camera.bottom = -40; dirLight.shadow.camera.left = -40; dirLight.shadow.camera.right = 40; scene.add(dirLight);
+            const groundGeo = new THREE.PlaneGeometry(100, 100); const groundMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.8 });
+            const ground = new THREE.Mesh(groundGeo, groundMat); ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground); 
+            gameManager = new GameManager(); player = new Player(); scene.add(player.mesh); uiManager = new UIManager(); 
+            let healingTower = new HealingTower(); scene.add(healingTower.mesh, healingTower.aura); dynamicEntities.push(healingTower);
+            for (let i = 0; i < 40; i++) spawnXpOrb(); for (let i = 0; i < 3; i++) spawnPurpleCube();
+            const towerPositions = [new THREE.Vector3(35, 0, 35), new THREE.Vector3(-35, 0, 35), new THREE.Vector3(35, 0, -35), new THREE.Vector3(-35, 0, -35)];
+            towerPositions.forEach(pos => { const t = new EnemyTower(pos); enemies.push(t); dynamicEntities.push(t); scene.add(t.mesh); });
+            setupControls();
+        }
+		
+        function animate() {
+            if (isGameOver) return; animationFrameId = requestAnimationFrame(animate); if (gameManager.isPaused) return; const dt = clock.getDelta();
+            gameManager.update(dt); player.update(dt);
+            [...enemies, ...enemyProjectiles, ...playerProjectiles, ...orbs, ...particles, ...dynamicEntities].forEach(obj => obj.update?.(dt, player));
+            checkCollisions(); uiManager.update(player, gameManager);
+            if (player && player.mesh) {
+                const desiredOffset = new THREE.Vector3(0, 20, 12); let targetPosition = player.mesh.position.clone().add(desiredOffset);
+                if (gameManager.shakeCamera.duration > 0) { gameManager.shakeCamera.duration -= dt; const intensity = gameManager.shakeCamera.intensity; targetPosition.x += (Math.random() - 0.5) * intensity; targetPosition.z += (Math.random() - 0.5) * intensity; } 
+                camera.position.lerp(targetPosition, 0.05); camera.lookAt(player.mesh.position);
+            }
+            renderer.render(scene, camera);
+        }
+        function checkCollisions() {
+            if (isGameOver) return;
+            for (let i = playerProjectiles.length - 1; i >= 0; i--) { const p = playerProjectiles[i]; if (!p?.mesh) continue; for (let j = enemies.length - 1; j >= 0; j--) { const e = enemies[j]; if (!e || e.isDestroyed || !e.mesh) continue; const dist = p.mesh.position.distanceTo(e.mesh.position); if (dist < (p.hitboxRadius + e.hitboxRadius)) { let totalDamage = p.damage; if (p.owner.isPlayer && p.owner.activeBuff.type === 'guerreiro' && e.maxHp) totalDamage += e.maxHp * 0.03; if (p.isBuffed === 'arqueiro' && e.maxHp) totalDamage += e.maxHp * 0.03 * 2; if (e.takeDamage) e.takeDamage(totalDamage, player); p.destroy(); break; } } } 
+            for (let i = enemyProjectiles.length - 1; i >= 0; i--) {
+                const p = enemyProjectiles[i]; if (!p?.mesh) continue; if (isGameOver) break; const dist = p.mesh.position.distanceTo(player.mesh.position);
+                if (dist < (p.hitboxRadius + player.hitboxRadius)) {
+                    if (p.specialEffect !== 'reflectedOrb') {
+                        if (p.explosionRadius === 0) { player.takeDamage(p.damage); }
+                        if (p.specialEffect === 'freeze') player.applyFreeze(3000);
+                        else if (p.specialEffect === 'bleed') player.applyBleed(5000, p.bleedDamage || p.damage * 0.2);
+                        else if (p.specialEffect === 'prisao') player.applyStun(2000);
+                        else if (p.specialEffect === 'enraizar') player.applyStun(1500);
+                        else if (p.specialEffect === 'lançaGelo') player.applySlow(2000, 0.5);
+                        else if (p.specialEffect === 'explosaoDasTrevas') player.applyBlindness(1500);
+                        else if (p.specialEffect === 'freezingCone') {
+                            const effect = player.statusEffects.freezingConeHits;
+                            effect.count++;
+                            effect.timer = 2000;
+                            if(effect.count >= 2) {
+                                player.applyFreeze(1000);
+                                effect.count = 0;
+                            }
+                        }
+                    }
+                    p.destroy();
+                }
+            }
+            for (let i = orbs.length - 1; i >= 0; i--) { const orb = orbs[i]; if (!orb?.mesh) continue; const pickupRadius = player.hitboxRadius + orb.hitboxRadius + (player.skillLevels.passive * 0.5); if(player.mesh.position.distanceTo(orb.mesh.position) < pickupRadius) { if (orb instanceof XpOrb) { player.collectOrb(orb); orb.destroy(); spawnXpOrb(); } else if (orb instanceof BuffOrb) { if (orb.buffType === 'essencia_negra') { player.applyTimedBuff('essencia_negra', 60, { magic_damage: 1.50, cooldown_reduction: 0.30, lifesteal: 0.05 }); } else { const magnitude = 1.20; player.applyTemporaryBuff(orb.buffType, 15, magnitude); } orb.destroy(); } } }
+        }
+        function createAreaExplosion(position, radius, damage, instigator, mainTarget, isChainReaction = false, isPlayerAbility = false) { const explosionGeo = new THREE.SphereGeometry(radius, 16, 16); const explosionMat = new THREE.MeshBasicMaterial({ color: 0xffa500, transparent: true, opacity: 0.7 }); const explosionMesh = new THREE.Mesh(explosionGeo, explosionMat); explosionMesh.position.copy(position); scene.add(explosionMesh); let scale = 0.1; const anim = () => { if(!explosionMesh?.parent) return; scale += 0.15; explosionMesh.scale.set(scale, scale, scale); explosionMesh.material.opacity -= 0.05; if (explosionMesh.material.opacity > 0) requestAnimationFrame(anim); else scene.remove(explosionMesh); }; anim(); if (instigator && !instigator.isPlayer) { if (player.mesh.position.distanceTo(position) < radius) { player.takeDamage(damage, false); } return; } enemies.forEach(enemy => { if (!enemy || enemy.isDestroyed) return; if (enemy !== instigator && enemy.mesh.position.distanceTo(position) < radius) { let explosionDamage = damage; if(isPlayerAbility && instigator.isPlayer) { explosionDamage = instigator.getDamage(true) * (damage / instigator.getDamage()); } if (enemy === mainTarget) explosionDamage *= 2; if (enemy.takeDamage) enemy.takeDamage(explosionDamage, instigator, false); if (instigator.isPlayer && player.skillLevels.passive >= 2) enemy.applySlow?.(2000); if (instigator.isPlayer && player.skillLevels.passive >= 4 && enemy === mainTarget) enemy.status.isMarked = true; if (instigator.isPlayer && player.skillLevels.passive >= 5 && !isChainReaction && enemy !== mainTarget) { createAreaExplosion(enemy.mesh.position, radius * 0.5, damage * 0.5, instigator, null, true, isPlayerAbility); } } }); }
+        function getSpawnPosition() { const a = Math.random()*Math.PI*2; const r = 30+Math.random()*20; return new THREE.Vector3(Math.cos(a)*r, 0.5, Math.sin(a)*r); }
+        function spawnXpOrb() { const p = new THREE.Vector3((Math.random()-0.5)*95, 0.5, (Math.random()-0.5)*95); if(p.length()<5) p.normalize().multiplyScalar(5); const o = new XpOrb(p); scene.add(o.mesh); orbs.push(o); }
+        function spawnPurpleCube() { const e = new PurpleCube(getSpawnPosition()); enemies.push(e); scene.add(e.mesh); }
+        function gerarConeVermelhoComDefensor() { const conePos = getSpawnPosition(); const cone = new RedCone(conePos); enemies.push(cone); scene.add(cone.mesh); if(gameManager.defenderTypes && gameManager.defenderTypes.length > 0) { const DefenderClass = gameManager.defenderTypes[Math.floor(Math.random() * gameManager.defenderTypes.length)]; const offset = new THREE.Vector3((Math.random() - 0.5) * 8, 0, (Math.random() - 0.5) * 8); const defenderPos = conePos.clone().add(offset); const defender = new DefenderClass(defenderPos, cone); enemies.push(defender); scene.add(defender.mesh); } }
+        function spawnSuperBoss() { const e = new SuperBoss(getSpawnPosition()); enemies.push(e); gameManager.activeBoss = e; scene.add(e.mesh); return e; }
+        function spawnCaoDosInfernos() { const e = new CaoDosInfernos(getSpawnPosition(), player.level); enemies.push(e); scene.add(e.mesh); return e; }
+        function createExplosion(position, count, color) { for (let i = 0; i < count; i++) { const velocity = new THREE.Vector3((Math.random() - 0.5) * 5, Math.random() * 5, (Math.random() - 0.5) * 5); const p = new Particle(position, velocity, color, Math.random() * 1 + 0.5); particles.push(p); scene.add(p.mesh); } }
+        function removeFromArray(arr, obj) { const i = arr.indexOf(obj); if (i > -1) arr.splice(i, 1); }
+        function onWindowResize() { if(camera && renderer) { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); } }
+        function onMouseMove(e) { mousePosition.x = (e.clientX / window.innerWidth) * 2 - 1; mousePosition.y = -(e.clientY / window.innerHeight) * 2 + 1; }
+        function setupControls() { window.addEventListener('resize', onWindowResize, false); if (controlScheme === 'pc') { document.getElementById('skills-hud').style.display = 'flex'; document.getElementById('mobile-controls').style.display = 'none'; document.body.addEventListener('contextmenu', e => e.preventDefault()); window.addEventListener('keydown', e => { const k = e.key.toLowerCase(); if (player && k in player.keys) player.keys[k] = true; if (player && ['q', 'w', 'e', 'r'].includes(k)) player.useSkill(k); }); window.addEventListener('keyup', e => { const k = e.key.toLowerCase(); if (player && k in player.keys) player.keys[k] = false; }); window.addEventListener('mousemove', onMouseMove, false); window.addEventListener('mousedown', e => { if (e.button === 2) { player.keys.w = true; } if (player && e.button === 0) player.isAttacking = true; }); window.addEventListener('mouseup', e => { if (e.button === 2) { player.keys.w = false; } if (player && e.button === 0) player.isAttacking = false; }); } else { document.getElementById('skills-hud').style.display = 'none'; document.getElementById('mobile-controls').style.display = 'block'; setupJoystick(); document.getElementById('attack-button').addEventListener('touchstart', e => { e.preventDefault(); if (player) player.attack(); }); let attackInterval; document.getElementById('attack-button').addEventListener('touchstart', e => { e.preventDefault(); if(player) { player.attack(); clearInterval(attackInterval); attackInterval = setInterval(() => { player.attack() }, 100); } }); document.getElementById('attack-button').addEventListener('touchend', e => { e.preventDefault(); clearInterval(attackInterval); }); document.getElementById('q-button').addEventListener('touchstart', e => { e.preventDefault(); if (player) player.useSkill('q'); }); document.getElementById('w-button').addEventListener('touchstart', e => { e.preventDefault(); if (player) player.useSkill('w'); }); document.getElementById('e-button').addEventListener('touchstart', e => { e.preventDefault(); if (player) player.useSkill('e'); }); document.getElementById('r-button').addEventListener('touchstart', e => { e.preventDefault(); if (player) player.useSkill('r'); }); } }
+        function setupJoystick() { const cont = document.getElementById('joystick-container'); const thumb = document.getElementById('joystick-thumb'); const maxR = cont.offsetWidth / 2 - thumb.offsetWidth / 2; let touchId = null; const handleTouchStart = e => { if (touchId === null) { e.preventDefault(); touchId = e.changedTouches[0].identifier; } }; const handleTouchMove = e => { e.preventDefault(); for (let i = 0; i < e.changedTouches.length; i++) { if (e.changedTouches[i].identifier === touchId) { const rect = cont.getBoundingClientRect(); const t = e.changedTouches[i]; let x = t.clientX - rect.left - rect.width / 2; let y = t.clientY - rect.top - rect.height / 2; const dist = Math.sqrt(x * x + y * y); if (dist > maxR) { x = (x / dist) * maxR; y = (y / dist) * maxR; } thumb.style.transform = `translate(${x}px, ${y}px)`; if (player) player.moveVector.set(x / maxR, y / maxR); break; } } }; const handleTouchEnd = e => { for (let i = 0; i < e.changedTouches.length; i++) { if (e.changedTouches[i].identifier === touchId) { thumb.style.transform = `translate(0px, 0px)`; if (player) player.moveVector.set(0, 0); touchId = null; break; } } }; cont.addEventListener('touchstart', handleTouchStart, { passive: false }); cont.addEventListener('touchmove', handleTouchMove, { passive: false }); window.addEventListener('touchend', handleTouchEnd); }
+    </script>
+    
+    <script>
+        // Início - Nova funcionalidade: Sistema de Ranking
+        (function() {
+            const SHEETDB_API_URL = 'https://sheetdb.io/api/v1/cnqkpc95w9c53';
+
+            const nameInput = document.getElementById('player-name-input');
+            const pcButton = document.getElementById('pc-button');
+            const mobileButton = document.getElementById('mobile-button');
+            const startLeaderboardList = document.getElementById('leaderboard-list-start');
+            const gameOverLeaderboardList = document.getElementById('leaderboard-list-gameover');
+
+            // Função para buscar e exibir o ranking
+            async function fetchAndDisplayLeaderboard(listElement) {
+                if (!listElement) return;
+                listElement.innerHTML = '<li>Carregando ranking...</li>';
+
+                try {
+                    const response = await fetch(SHEETDB_API_URL);
+                    if (!response.ok) {
+                        throw new Error(`Erro na API: ${response.statusText}`);
+                    }
+                    let data = await response.json();
+
+                    // Ordena os dados pelo score em ordem decrescente
+                    data.sort((a, b) => parseInt(b.score) - parseInt(a.score));
+
+                    // Pega apenas o Top 10
+                    const top10 = data.slice(0, 10);
+                    
+                    listElement.innerHTML = ''; // Limpa a lista
+                    
+                    if (top10.length === 0) {
+                         listElement.innerHTML = '<li>Ninguém no ranking ainda. Seja o primeiro!</li>';
+                         return;
+                    }
+
+                    top10.forEach((player, index) => {
+                        const li = document.createElement('li');
+                        let medal = '';
+                        if (index === 0) medal = '🥇 ';
+                        else if (index === 1) medal = '🥈 ';
+                        else if (index === 2) medal = '🥉 ';
+                        else medal = `${index + 1}. `;
+
+                        li.textContent = `${medal}${player.nome} — ${player.score} pontos`;
+                        listElement.appendChild(li);
+                    });
+                } catch (error) {
+                    console.error('Falha ao buscar o ranking:', error);
+                    listElement.innerHTML = '<li>Não foi possível carregar o ranking.</li>';
+                }
+            }
+            
+            // Função para postar o score
+            async function postScore(name, score) {
+                try {
+                    const response = await fetch(SHEETDB_API_URL, {
+                        method: 'POST',
+                        headers: {
+                            'Accept': 'application/json',
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            data: {
+                                'nome': name,
+                                'score': score
+                            }
+                        })
+                    });
+                    if (!response.ok) {
+                        throw new Error(`Erro ao postar score: ${response.statusText}`);
+                    }
+                    await response.json();
+                    console.log('Score enviado com sucesso!');
+                    
+                    // Atualiza a lista de ranking na tela de game over
+                    fetchAndDisplayLeaderboard(gameOverLeaderboardList);
+                    
+                } catch (error) {
+                    console.error('Falha ao enviar o score:', error);
+                    if(gameOverLeaderboardList) gameOverLeaderboardList.innerHTML = '<li>Erro ao atualizar o ranking.</li>';
+                }
+            }
+
+            // Habilita/desabilita botões de início
+            function handleNameInput() {
+                const name = nameInput.value.trim();
+                if (name.length > 0) {
+                    pcButton.disabled = false;
+                    mobileButton.disabled = false;
+                } else {
+                    pcButton.disabled = true;
+                    mobileButton.disabled = true;
+                }
+            }
+            
+            // Adiciona o listener ao input de nome
+            if(nameInput) {
+                nameInput.addEventListener('input', handleNameInput);
+            }
+
+            // Busca o ranking inicial quando a página carrega
+            document.addEventListener('DOMContentLoaded', () => {
+                fetchAndDisplayLeaderboard(startLeaderboardList);
+            });
+            
+            // Expõe as funções necessárias globalmente para o UIManager
+            window.rankingManager = {
+                postScore,
+                fetchAndDisplayLeaderboard
+            };
+
+        })();
+        // Fim - Nova funcionalidade: Sistema de Ranking
+    </script>
+    
+</body>
+</html>

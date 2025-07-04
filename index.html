@@ -577,6 +577,14 @@
                 this.mesh.position.set(0, 0.5, 5);
                 this.mesh.castShadow = true;
 				
+                applySilence(duration) {
+    this.statusEffects.silenced.isActive = true;
+    this.statusEffects.silenced.timer = Math.max(this.statusEffects.silenced.timer, duration);
+}
+
+applyDamageReduction(duration, amount) {
+    this.statusEffects.damageReduced = { isActive: true, timer: duration, amount: amount };
+}
                 // Status principais
                 this.hitboxRadius = 0.5;
                 this.speed = 5; this.originalSpeed = 5;
@@ -798,38 +806,33 @@
                 }
             }
             
-            takeDamage(amount, fromProjectile = true, isTrueDamage = false) {
-                if (isGameOver || (this.skills.r.isActive && !fromProjectile)) return;
+            // Substitua a sua função takeDamage() por esta:
+takeDamage(amount, fromProjectile = true) {
+    if (isGameOver || (this.skills.r.isActive && !fromProjectile)) return;
 
-                let finalDamage = amount;
-                
-                // Ignora defesa se for dano verdadeiro
-                if (!isTrueDamage) {
-                    const plantaBuff = this.timedBuffs.find(b => b.type === 'planta_buff');
-                    if (plantaBuff) this.heal(amount * plantaBuff.effects.lifesteal);
-                    
-                    const fracture = this.statusEffects.armorFracture;
-                    const defenseModifier = fracture.isActive ? (1 + fracture.amount) : 1;
-                    
-                    finalDamage *= defenseModifier;
-                }
+    let finalDamage = amount;
+    if (this.statusEffects.damageReduced?.isActive) {
+        finalDamage *= (1 - this.statusEffects.damageReduced.amount);
+    }
 
-                const e = this.skills.e;
-                if (e.isActive && e.shieldHp > 0) {
-                    const damageToShield = Math.min(finalDamage, e.shieldHp);
-                    e.shieldHp -= damageToShield; e.damageAbsorbed += damageToShield;
-                    const remainingDamage = finalDamage - damageToShield;
-                    if (remainingDamage > 0) this.hp -= remainingDamage;
-                } else { this.hp -= finalDamage; }
-                
-                if (fromProjectile || isTrueDamage) {
-                    this.isTakingDamage = true;
-                    this.mesh.material.color.set(isTrueDamage ? 0xff8800 : 0xff0000);
-                    setTimeout(() => { this.mesh.material.color.set(this.originalColor); this.isTakingDamage = false; }, 150);
-                }
-                
-                if (this.hp <= 0) { this.hp = 0; this.die(); }
-            }
+    const plantaBuff = this.timedBuffs.find(b => b.type === 'planta_buff');
+    if (plantaBuff) this.heal(finalDamage * plantaBuff.effects.lifesteal);
+
+    const e = this.skills.e;
+    if (e.isActive && e.shieldHp > 0) {
+        const damageToShield = Math.min(finalDamage, e.shieldHp);
+        e.shieldHp -= damageToShield; e.damageAbsorbed += damageToShield;
+        const remainingDamage = finalDamage - damageToShield;
+        if (remainingDamage > 0) this.hp -= remainingDamage;
+    } else { this.hp -= finalDamage; }
+
+    if (fromProjectile) {
+        this.isTakingDamage = true;
+        this.mesh.material.color.set(0xff0000);
+        setTimeout(() => { this.mesh.material.color.set(this.originalColor); this.isTakingDamage = false; }, 150);
+    }
+    if (this.hp <= 0) { this.hp = 0; this.die(); }
+}
             
             handleMovement(dt) {
                 if (this.statusEffects.stunned.isActive || this.statusEffects.frozen.isActive || this.statusEffects.rooted.isActive || this.statusEffects.lichKingPrison.isActive) return;
@@ -910,7 +913,13 @@
             upgradeSkill(key) { if (this.skillLevels[key] < 3) this.skillLevels[key]++; }
             addXp(amount) { this.xp += amount; if (this.xp >= this.xpToNextLevel) this.levelUp(); }
             collectOrb(orb) { this.orbsCollected++; this.score += 19; const bonusTier = Math.floor(this.orbsCollected / 5); this.addXp(1 + bonusTier); }
-            heal(amount) { this.hp = Math.min(this.maxHp, this.hp + amount); }
+            // Substitua a sua função heal() por esta:
+heal(amount) {
+    const cavaleiroPreto = enemies.find(e => e.name === "Cavaleiro Preto (Fome)" && e.mesh.position.distanceTo(this.mesh.position) < e.degenerationAuraRadius);
+    if (cavaleiroPreto) return; // Bloqueia cura
+
+    this.hp = Math.min(this.maxHp, this.hp + amount);
+}
             die() { isGameOver = true; this.mesh.material.color.set(0x555555); gameManager.endGame(); }
             applyBuff(type) { this.clearBuff(); this.activeBuff.type = type; this.activeBuff.timer = this.activeBuff.duration; if (type === 'guerreiro') { const hpBonus = this.maxHp * 0.20; this.maxHp += hpBonus; this.hp += hpBonus; } }
             clearBuff() { if (this.activeBuff.type === 'guerreiro') { const originalMaxHp = this.maxHp / 1.20; this.maxHp = originalMaxHp; if (this.hp > this.maxHp) this.hp = this.maxHp; } this.activeBuff.type = null; this.activeBuff.timer = 0; this.activeBuff.attackCounter = 0; }
@@ -1956,6 +1965,7 @@
                         this.usarChicote(player);
                     }
                 }
+                
             }
 
             destroy(instigator) {
@@ -1972,6 +1982,470 @@
                 super.destroy(instigator);
             }
         }
+        // =================================================================================
+// INÍCIO: CAVALEIROS DO APOCALIPSE
+// =================================================================================
+
+class CavaleiroBase extends Enemy {
+    constructor(position) {
+        super(position);
+        this.isCavaleiro = true; // Flag para identificar os cavaleiros
+        this.hitboxRadius = 1.2;
+        this.speed = 2.5;
+        this.originalSpeed = 2.5;
+        this.xp = 1500;
+        this.score = 3000;
+    }
+
+    // IA Padrão de perseguição para os cavaleiros
+    updateAI(dt, player) {
+        if (this.isDestroyed || this.updateStatus(dt)) return;
+
+        const dist = this.mesh.position.distanceTo(player.mesh.position);
+        
+        // Persegue o jogador
+        const dir = player.mesh.position.clone().sub(this.mesh.position).normalize();
+        this.mesh.position.add(dir.multiplyScalar(this.speed * dt));
+
+        this.mesh.lookAt(player.mesh.position.x, this.mesh.position.y, player.mesh.position.z);
+    }
+    
+    destroy(instigator) {
+        // Remove da lista específica de cavaleiros e da lista geral de inimigos
+        removeFromArray(gameManager.cavaleiros, this);
+        super.destroy(instigator);
+    }
+}
+
+// --------------------------------------------------
+// ☠️ CAVALEIRO BRANCO – CONQUISTA
+// --------------------------------------------------
+class CavaleiroBranco extends CavaleiroBase {
+    constructor(position, player) {
+        super(position);
+        this.name = "Cavaleiro Branco (Conquista)";
+        this.maxHp = 6000 + (player.maxHp * 0.2);
+        this.hp = this.maxHp;
+
+        // Aparência
+        const geo = new THREE.DodecahedronGeometry(1.5, 0);
+        const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xcccccc, metalness: 0.8, roughness: 0.2 });
+        this.mesh = new THREE.Mesh(geo, mat);
+        this.mesh.position.copy(position);
+        this.mesh.castShadow = true;
+        
+        // Passiva: Aura de Dominação
+        this.dominationAuraRadius = 15;
+
+        // Habilidades
+        this.skills = {
+            disparoMental: { cooldown: 12000, lastUsed: 0 },
+            coroaDeLuz: { cooldown: 15000, lastUsed: 0 },
+            duplicata: { cooldown: 20000, lastUsed: 0 }
+        };
+    }
+
+    update(dt, player) {
+        this.updateAI(dt, player);
+        const now = Date.now();
+        const dist = this.mesh.position.distanceTo(player.mesh.position);
+
+        // Lógica da Passiva
+        if (dist < this.dominationAuraRadius) {
+            player.applySlow(500, 0.20); 
+            player.applyAttackSpeedSlow(500, 0.20); 
+        }
+
+        // Lógica das Habilidades
+        if (now > this.skills.duplicata.lastUsed + this.skills.duplicata.cooldown && dist < 20) {
+            this.usarDuplicata(player);
+        } else if (now > this.skills.coroaDeLuz.lastUsed + this.skills.coroaDeLuz.cooldown && dist < 12) {
+            this.usarCoroaDeLuz(player);
+        } else if (now > this.skills.disparoMental.lastUsed + this.skills.disparoMental.cooldown && dist < 18) {
+            this.usarDisparoMental(player);
+        }
+    }
+    
+    usarDisparoMental(target) {
+        this.skills.disparoMental.lastUsed = Date.now();
+        player.applyDisorientation(3000);
+        createExplosion(this.mesh.position, 5, new THREE.Color(0xffffff));
+    }
+
+    usarCoroaDeLuz(target) {
+        this.skills.coroaDeLuz.lastUsed = Date.now();
+        createAreaExplosion(this.mesh.position, 10, 100, this, target);
+        if (this.mesh.position.distanceTo(target.mesh.position) < 10) {
+            target.applySilence(4000);
+        }
+    }
+    
+    usarDuplicata(target) {
+        this.skills.duplicata.lastUsed = Date.now();
+        for (let i = 0; i < 2; i++) {
+            const offset = new THREE.Vector3((Math.random() - 0.5) * 8, 0, (Math.random() - 0.5) * 8);
+            const clonePos = this.mesh.position.clone().add(offset);
+            const clone = new CloneIlusorio(clonePos, this); 
+            enemies.push(clone);
+            scene.add(clone.mesh);
+        }
+    }
+}
+
+
+// --------------------------------------------------
+// 🔥 CAVALEIRO VERMELHO – GUERRA
+// --------------------------------------------------
+class CavaleiroVermelho extends CavaleiroBase {
+    constructor(position, player) {
+        super(position);
+        this.name = "Cavaleiro Vermelho (Guerra)";
+        this.maxHp = 8000 + (player.maxHp * 0.3);
+        this.hp = this.maxHp;
+        this.speed = 3.0;
+        this.originalSpeed = 3.0;
+        this.damageMultiplier = 1.0;
+
+        const geo = new THREE.ConeGeometry(1.5, 3, 4);
+        const mat = new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0xcc0000 });
+        this.mesh = new THREE.Mesh(geo, mat);
+        this.mesh.position.copy(position);
+        this.mesh.position.y = 1.5;
+        this.mesh.castShadow = true;
+        
+        this.lastKillCheckTime = Date.now();
+        
+        this.skills = {
+            golpeDevastador: { cooldown: 8000, lastUsed: 0 },
+            terraEnsanguentada: { cooldown: 18000, lastUsed: 0 },
+            furiaIncandescente: { cooldown: 12000, lastUsed: 0 }
+        };
+    }
+
+    update(dt, player) {
+        this.updateAI(dt, player);
+        const now = Date.now();
+        const dist = this.mesh.position.distanceTo(player.mesh.position);
+
+        if (now > this.lastKillCheckTime + 10000) {
+            this.speed = this.originalSpeed;
+        }
+
+        if (now > this.skills.terraEnsanguentada.lastUsed + this.skills.terraEnsanguentada.cooldown) {
+            this.usarTerraEnsanguentada();
+        } else if (now > this.skills.furiaIncandescente.lastUsed + this.skills.furiaIncandescente.cooldown && dist < 12) {
+            this.usarFuriaIncandescente(player);
+        } else if (now > this.skills.golpeDevastador.lastUsed + this.skills.golpeDevastador.cooldown && dist < 6) {
+            this.usarGolpeDevastador(player);
+        }
+    }
+
+    usarGolpeDevastador(target) {
+        this.skills.golpeDevastador.lastUsed = Date.now();
+        createAreaExplosion(this.mesh.position, 6, 200 * this.damageMultiplier, this, target);
+        if (this.mesh.position.distanceTo(target.mesh.position) < 6) {
+            const knockbackDir = target.mesh.position.clone().sub(this.mesh.position).normalize();
+            target.applyKnockback(knockbackDir, 15);
+        }
+    }
+
+    usarTerraEnsanguentada() {
+        this.skills.terraEnsanguentada.lastUsed = Date.now();
+        const zone = new DamageZone(this.mesh.position, 8, 10000, 1.5, this, 0xff4d4d);
+        dynamicEntities.push(zone);
+        scene.add(zone.mesh);
+    }
+
+    usarFuriaIncandescente(target) {
+        this.skills.furiaIncandescente.lastUsed = Date.now();
+        const baseDir = target.mesh.position.clone().sub(this.mesh.position).normalize();
+        for (let i = -1; i <= 1; i++) {
+            const angle = i * Math.PI / 8;
+            const pDir = baseDir.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), angle);
+            const p = new Projectile(this.mesh.position.clone(), pDir, this, target);
+            p.damage = 150 * this.damageMultiplier;
+            p.specialEffect = 'bleed'; // Reutilizando efeito de sangramento para queimadura
+            p.bleedDamage = 20;
+            enemyProjectiles.push(p);
+            scene.add(p.mesh);
+        }
+    }
+    
+    takeDamage(amount, instigator) {
+        super.takeDamage(amount, instigator);
+        if(this.hp <= 0) {
+            const nearbyWarriors = enemies.filter(e => e.name === this.name && e !== this);
+            nearbyWarriors.forEach(w => {
+                w.speed *= 1.05;
+                w.lastKillCheckTime = Date.now();
+            });
+        }
+    }
+}
+
+// --------------------------------------------------
+// 🌑 CAVALEIRO PRETO – FOME
+// --------------------------------------------------
+class CavaleiroPreto extends CavaleiroBase {
+    constructor(position, player) {
+        super(position);
+        this.name = "Cavaleiro Preto (Fome)";
+        this.maxHp = 7000 + (player.maxHp * 0.25);
+        this.hp = this.maxHp;
+        this.speed = 3.2;
+        this.originalSpeed = 3.2;
+
+        const geo = new THREE.OctahedronGeometry(1.5, 0);
+        const mat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, emissive: 0x111111 });
+        this.mesh = new THREE.Mesh(geo, mat);
+        this.mesh.position.copy(position);
+        this.mesh.castShadow = true;
+
+        this.degenerationAuraRadius = 18;
+        
+        this.skills = {
+            rouboDeRecursos: { cooldown: 20000, lastUsed: 0 },
+            garrasDaFome: { cooldown: 10000, lastUsed: 0 },
+            areaEsteril: { cooldown: 25000, lastUsed: 0 }
+        };
+    }
+
+    update(dt, player) {
+        this.updateAI(dt, player);
+        const now = Date.now();
+        const dist = this.mesh.position.distanceTo(player.mesh.position);
+
+        if (dist < this.degenerationAuraRadius) {
+            // A lógica de bloqueio de cura está no `player.heal()`
+        }
+
+        if (now > this.skills.areaEsteril.lastUsed + this.skills.areaEsteril.cooldown) {
+             this.usarAreaEsteril();
+        } else if (now > this.skills.rouboDeRecursos.lastUsed + this.skills.rouboDeRecursos.cooldown && dist < 15) {
+            this.usarRouboDeRecursos(player);
+        } else if (now > this.skills.garrasDaFome.lastUsed + this.skills.garrasDaFome.cooldown && dist < 7) {
+            this.usarGarrasDaFome(player);
+        }
+    }
+
+    usarRouboDeRecursos(target) {
+        this.skills.rouboDeRecursos.lastUsed = Date.now();
+        if (target.activeBuff.type) {
+            this.heal(300);
+            target.clearBuff();
+        }
+        const xpStolen = target.xp * 0.25;
+        target.xp -= xpStolen;
+        this.heal(xpStolen * 5);
+        
+        createExplosion(this.mesh.position, 5, new THREE.Color(0x333333));
+    }
+
+    usarGarrasDaFome(target) {
+        this.skills.garrasDaFome.lastUsed = Date.now();
+        target.applyRoot(2000);
+        target.takeDamage(150, false);
+    }
+    
+    usarAreaEsteril() {
+        this.skills.areaEsteril.lastUsed = Date.now();
+        const zone = new SterileZone(this.mesh.position, 15, 8000);
+        dynamicEntities.push(zone);
+        scene.add(zone.mesh);
+    }
+}
+
+// --------------------------------------------------
+// 💀 CAVALEIRO AMARELO – MORTE
+// --------------------------------------------------
+class CavaleiroAmarelo extends CavaleiroBase {
+    constructor(position, player) {
+        super(position);
+        this.name = "Cavaleiro Amarelo (Morte)";
+        this.maxHp = 9000 + (player.maxHp * 0.15);
+        this.hp = this.maxHp;
+        this.speed = 2.2;
+        this.originalSpeed = 2.2;
+        
+        const geo = new THREE.TorusKnotGeometry(1.2, 0.4, 100, 8);
+        const mat = new THREE.MeshStandardMaterial({ color: 0xffd700, emissive: 0xdaa520 });
+        this.mesh = new THREE.Mesh(geo, mat);
+        this.mesh.position.copy(position);
+        this.mesh.castShadow = true;
+
+        this.executeAuraRadius = 25;
+        this.berserk = { isActive: false, timer: 0, duration: 10000, killCount: 0, killTimer: 10000 };
+
+        this.skills = {
+            toqueDaMorte: { cooldown: 8000, lastUsed: 0 },
+            nevoaDaAgonia: { cooldown: 15000, lastUsed: 0 }
+        };
+    }
+    
+    activateBerserk() {
+        this.berserk.isActive = true;
+        this.berserk.timer = this.berserk.duration;
+        this.speed *= 1.5;
+        this.mesh.material.emissive.set(0xff0000);
+    }
+    
+    takeDamage(amount, instigator) {
+        super.takeDamage(amount, instigator);
+        if(this.hp <= 0) {
+             this.berserk.killCount++;
+             this.berserk.killTimer = 10000;
+             if (this.berserk.killCount >= 3) {
+                this.activateBerserk();
+             }
+        }
+    }
+
+    update(dt, player) {
+        this.updateAI(dt, player);
+        const now = Date.now();
+        const dist = this.mesh.position.distanceTo(player.mesh.position);
+
+        enemies.forEach(e => {
+            if (e !== this && !e.isDestroyed && e.hp > 0 && e.hp / e.maxHp < 0.15) {
+                 if (this.mesh.position.distanceTo(e.mesh.position) < this.executeAuraRadius) {
+                    e.takeDamage(e.maxHp, this, false);
+                 }
+            }
+        });
+        
+        if (this.berserk.killTimer > 0) {
+             this.berserk.killTimer -= dt * 1000;
+        } else {
+             this.berserk.killCount = 0;
+        }
+
+        if (this.berserk.isActive) {
+            this.berserk.timer -= dt * 1000;
+            if (this.berserk.timer <= 0) {
+                this.berserk.isActive = false;
+                this.speed = this.originalSpeed;
+                this.mesh.material.emissive.set(0xdaa520);
+            }
+        }
+
+        if (now > this.skills.nevoaDaAgonia.lastUsed + this.skills.nevoaDaAgonia.cooldown) {
+            this.usarNevoaDaAgonia(player);
+        } else if (now > this.skills.toqueDaMorte.lastUsed + this.skills.toqueDaMorte.cooldown && dist < 20) {
+            this.usarToqueDaMorte(player);
+        }
+    }
+    
+    usarToqueDaMorte(target) {
+        this.skills.toqueDaMorte.lastUsed = Date.now();
+        target.takeDamage(target.hp * 0.40, false);
+        createExplosion(this.mesh.position, 5, new THREE.Color(0x444444));
+    }
+
+    usarNevoaDaAgonia(target) {
+        this.skills.nevoaDaAgonia.lastUsed = Date.now();
+        const zone = new AgonyMistZone(this.mesh.position, 12, 8000);
+        dynamicEntities.push(zone);
+        scene.add(zone.mesh);
+    }
+}
+
+// --------------------------------------------------
+// HABILIDADES E ZONAS CUSTOMIZADAS
+// --------------------------------------------------
+
+class DamageZone {
+    constructor(position, radius, duration, damageMultiplier, owner, color) {
+        this.radius = radius;
+        this.lifeTimer = duration;
+        this.owner = owner;
+        this.damageMultiplier = damageMultiplier;
+        
+        const geo = new THREE.CircleGeometry(this.radius, 32);
+        const mat = new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: 0.4 });
+        this.mesh = new THREE.Mesh(geo, mat);
+        this.mesh.position.copy(position);
+        this.mesh.position.y = 0.01;
+        this.mesh.rotation.x = -Math.PI / 2;
+    }
+    update(dt) {
+        this.lifeTimer -= dt * 1000;
+        if (this.lifeTimer <= 0) {
+            this.destroy();
+            return;
+        }
+        if (this.owner && !this.owner.isDestroyed && this.owner.mesh.position.distanceTo(this.mesh.position) < this.radius) {
+             this.owner.damageMultiplier = this.damageMultiplier;
+        } else if (this.owner) {
+             this.owner.damageMultiplier = 1.0;
+        }
+    }
+    destroy() {
+        if (this.owner) this.owner.damageMultiplier = 1.0;
+        if (this.mesh.parent) scene.remove(this.mesh);
+        removeFromArray(dynamicEntities, this);
+    }
+}
+
+class SterileZone {
+    constructor(position, radius, duration) {
+        this.radius = radius;
+        this.lifeTimer = duration;
+        
+        const geo = new THREE.CircleGeometry(this.radius, 32);
+        const mat = new THREE.MeshBasicMaterial({ color: 0x333333, transparent: true, opacity: 0.5 });
+        this.mesh = new THREE.Mesh(geo, mat);
+        this.mesh.position.copy(position);
+        this.mesh.position.y = 0.01;
+        this.mesh.rotation.x = -Math.PI / 2;
+        
+        gameManager.isSterileZoneActive = true;
+    }
+    update(dt) {
+        this.lifeTimer -= dt * 1000;
+        if (this.lifeTimer <= 0) this.destroy();
+    }
+    destroy() {
+        gameManager.isSterileZoneActive = false;
+        if (this.mesh.parent) scene.remove(this.mesh);
+        removeFromArray(dynamicEntities, this);
+    }
+}
+
+class AgonyMistZone {
+    constructor(position, radius, duration) {
+        this.radius = radius;
+        this.lifeTimer = duration;
+        
+        const geo = new THREE.SphereGeometry(this.radius, 32, 32);
+        const mat = new THREE.MeshBasicMaterial({ color: 0xf0e68c, transparent: true, opacity: 0.3 });
+        this.mesh = new THREE.Mesh(geo, mat);
+        this.mesh.position.copy(position);
+    }
+    update(dt, player) {
+        this.lifeTimer -= dt * 1000;
+        if (this.lifeTimer <= 0) {
+            this.destroy();
+            return;
+        }
+        
+        if (this.mesh.position.distanceTo(player.mesh.position) < this.radius) {
+            player.applyDamageReduction(500, 0.5);
+            uiManager.toggleBlindEffect(true);
+        } else {
+             uiManager.toggleBlindEffect(false);
+        }
+    }
+    destroy() {
+        uiManager.toggleBlindEffect(false);
+        if (this.mesh.parent) scene.remove(this.mesh);
+        removeFromArray(dynamicEntities, this);
+    }
+}
+
+
+// =================================================================================
+// FIM: CAVALEIROS DO APOCALIPSE
+// =================================================================================
         
         class EnemyTower extends Enemy { constructor(position) { super(position); this.maxHp = 500 * gameManager.globalMultiplier; this.hp = this.maxHp; this.damage = 20 * gameManager.globalMultiplier; this.xp = 100; this.score = 150; this.attackRange = 30; this.attackCooldown = 1500; this.lastAttackTime = 0; this.speed = 0; this.originalSpeed = 0; const geo = new THREE.CylinderGeometry(1, 1.2, 4, 12); const mat = new THREE.MeshStandardMaterial({ color: 0xc0392b }); this.mesh = new THREE.Mesh(geo, mat); this.mesh.position.copy(position); this.mesh.position.y = 2; this.mesh.castShadow = true; this.hitboxRadius = 1.2; } scaleStats(multiplier) { this.applyGlobalBuff(multiplier); } getDamage(target) { const dist = this.mesh.position.distanceTo(target.mesh.position); const bonus = 1 + Math.max(0, (this.attackRange - dist) / this.attackRange); return this.damage * bonus; } destroy(instigator) { this.mesh.visible = false; createExplosion(this.mesh.position, 25, this.mesh.material.color); if (instigator?.isPlayer) { instigator.addXp(this.xp); instigator.score += this.score; } gameManager.scheduleRespawn(this, 60); super.destroy(instigator); } respawn() { this.hp = this.maxHp; this.isDestroyed = false; this.mesh.visible = true; enemies.push(this); } attack(target) { const now = Date.now(); if (now > this.lastAttackTime + this.attackCooldown) { this.lastAttackTime = now; const start = this.mesh.position.clone(); start.y = 3; const dir = target.mesh.position.clone().sub(start).normalize(); const p = new Projectile(start, dir, this, target); enemyProjectiles.push(p); scene.add(p.mesh); } } update(dt, player) { if (isGameOver || this.isDestroyed || this.updateStatus(dt)) return; if (this.mesh.position.distanceTo(player.mesh.position) <= this.attackRange) this.attack(player); } }
         
@@ -2059,7 +2533,12 @@
         
         class HealingOrb { constructor(start, target) { const geo = new THREE.SphereGeometry(0.2, 16, 16); const mat = new THREE.MeshStandardMaterial({ color: 0x00ff00, emissive: 0x00ff00, emissiveIntensity: 2 }); this.mesh = new THREE.Mesh(geo, mat); this.mesh.position.copy(start); this.mesh.position.y = 1; this.target = target; this.speed = 8; this.healAmount = target.maxHp * 0.08; this.hitboxRadius = 0.2; } update(dt) { if (isGameOver || !this.target?.mesh) { this.destroy(); return; } const dir = this.target.mesh.position.clone().sub(this.mesh.position).normalize(); this.mesh.position.add(dir.multiplyScalar(this.speed * dt)); if (this.mesh.position.distanceTo(this.target.mesh.position) < 0.6) { this.target.heal(this.healAmount); this.destroy(); } } destroy() { if(this.mesh.parent) scene.remove(this.mesh); removeFromArray(orbs, this); } }
         
-        class XpOrb { constructor(pos) { const geo = new THREE.SphereGeometry(0.25, 16, 16); const mat = new THREE.MeshStandardMaterial({ color: 0x2ecc71, emissive: 0x2ecc71, emissiveIntensity: 0.5 }); this.mesh = new THREE.Mesh(geo, mat); this.mesh.position.copy(pos); this.hitboxRadius = 1.0; } update() { this.mesh.position.y = Math.sin(clock.getElapsedTime() * 2 + this.mesh.position.x) * 0.1 + 0.5; } destroy() { if(this.mesh.parent) scene.remove(this.mesh); removeFromArray(orbs, this); } }
+        class XpOrb { constructor(pos) { const geo = new THREE.SphereGeometry(0.25, 16, 16); const mat = new THREE.MeshStandardMaterial({ color: 0x2ecc71, emissive: 0x2ecc71, emissiveIntensity: 0.5 }); this.mesh = new THREE.Mesh(geo, mat); this.mesh.position.copy(pos); this.hitboxRadius = 1.0; } update() { this.mesh.position.y = Math.sin(clock.getElapsedTime() * 2 + this.mesh.position.x) * 0.1 + 0.5; } // Substitua a função destroy() da classe XpOrb por esta:
+destroy() {
+    if (gameManager && gameManager.isSterileZoneActive) return;
+    if(this.mesh.parent) scene.remove(this.mesh);
+    removeFromArray(orbs, this);
+}
         
         class BuffOrb { constructor(pos, buffType) { this.buffType = buffType; let color; switch (buffType) { case 'damage': color = 0xff4500; break; case 'attackSpeed': color = 0x1e90ff; break; case 'essencia_negra': color = 0x4B0082; break; default: color = 0xffffff; } const geo = new THREE.SphereGeometry(0.3, 16, 16); const mat = new THREE.MeshStandardMaterial({ color: color, emissive: color, emissiveIntensity: 1.5 }); this.mesh = new THREE.Mesh(geo, mat); this.mesh.position.copy(pos); this.mesh.position.y = 1; this.hitboxRadius = 0.8; } update() { this.mesh.rotation.y += 0.05; this.mesh.position.y = Math.sin(clock.getElapsedTime() * 3 + this.mesh.position.x) * 0.2 + 1; } destroy() { scene.remove(this.mesh); removeFromArray(orbs, this); } }
         
@@ -2067,54 +2546,117 @@
 		
         // --- Classes de Gerenciamento ---
         class GameManager {
-            constructor() {
-                this.isPaused = false;
-                this.gameTime = 0; this.globalMultiplier = 1; this.collapseLevel = 0;
-                this.shakeCamera = { duration: 0, intensity: 0 };
-                this.timers = {
-                    globalScale: 60, spawnPurpleCube: 5, spawnRedCone: 30, spawnGuardian: 240, spawnCaoDosInfernos: 120,
-                    spawnRainha: 300, 
-                    spawnPlantaCarnivora: 210,
-                    spawnFeiticeiro: 420,
-                    spawnLichKing: 600,
-                    spawnGangplank: 360 // 6 minutos
-                };
-                this.isRainhaAlive = false; 
-                this.isPlantaCarnivoraAlive = false;
-                this.isGangplankAlive = false; // Controle do Gangplank
-                this.eventTimers = { superBoss: { time: 180, triggered: false }, theMightyOne: { nextSpawnTime: 600, isAlive: false, instance: null } };
-                this.respawnQueue = []; this.activeBoss = null;
-                this.guardianTypes = [GuardianGuerreiro, GuardianMago, GuardianArqueiro];
-                this.defenderTypes = [BruxaDoGelo, MestraDaIlusao, BombardeiroInsano];
-                this.upgradeQueue = [];
-            }
-            requestUpgrade(level) { this.upgradeQueue.push(level); if (!this.isPaused) this.processUpgradeQueue(); }
-            processUpgradeQueue() { if (this.upgradeQueue.length > 0) { this.pause(); const level = this.upgradeQueue.shift(); uiManager.showUpgradePanel(level); } }
-            pause() { this.isPaused = true; }
-            unpause() { this.isPaused = false; this.processUpgradeQueue(); }
-            update(dt) { if (isGameOver) return; this.gameTime += dt; this.updateSpawners(dt); this.updateRespawns(dt); this.checkEvents(dt); }
-            updateSpawners(dt) {
-                this.timers.globalScale -= dt; if (this.timers.globalScale <= 0) { this.timers.globalScale = 60; }
-                this.timers.spawnPurpleCube -= dt; if (this.timers.spawnPurpleCube <= 0) { this.timers.spawnPurpleCube = 5; for (let i = 0; i < 2; i++) spawnPurpleCube(); }
-                this.timers.spawnRedCone -= dt; if (this.timers.spawnRedCone <= 0) { this.timers.spawnRedCone = 30; gerarConeVermelhoComDefensor(); }
-                this.timers.spawnGuardian -= dt; if (this.gameTime > 240 && this.timers.spawnGuardian <= 0) { this.timers.spawnGuardian = 60; let spawnCount = 1; if (this.gameTime >= 1200) spawnCount = 3; else if (this.gameTime >= 600) spawnCount = 2; for (let i = 0; i < spawnCount; i++) this.spawnRandomGuardian(); }
-                this.timers.spawnCaoDosInfernos -= dt; if (this.timers.spawnCaoDosInfernos <= 0) { this.timers.spawnCaoDosInfernos = 120; let spawnCount = 1; if (this.gameTime >= 1200) spawnCount = 2; for (let i = 0; i < spawnCount; i++) spawnCaoDosInfernos(); uiManager.showEventMessage("O CÃO DOS INFERNOS ESTÁ À CAÇA!"); }
-                this.timers.spawnRainha -= dt; if (this.timers.spawnRainha <= 0) { this.timers.spawnRainha = 300; if (!this.isRainhaAlive) { this.isRainhaAlive = true; const rainha = new RainhaDasTrevas(getSpawnPosition(), player); enemies.push(rainha); scene.add(rainha.mesh); this.activeBoss = rainha; uiManager.showEventMessage("⚠️ A Rainha das Trevas emergiu das sombras… prepare-se!"); } }
-                this.timers.spawnPlantaCarnivora -= dt; if (this.timers.spawnPlantaCarnivora <= 0) { this.timers.spawnPlantaCarnivora = 210; if (!this.isPlantaCarnivoraAlive) { this.isPlantaCarnivoraAlive = true; const planta = new PlantaCarnivoraRainha(getSpawnPosition(), player); enemies.push(planta); scene.add(planta.mesh); this.activeBoss = planta; uiManager.showEventMessage("⚠️ O chão treme... A Planta Carnívora Rainha despertou!"); } }
-                this.timers.spawnFeiticeiro -= dt; if (this.timers.spawnFeiticeiro <= 0) { this.timers.spawnFeiticeiro = 420; const existingFeiticeiro = enemies.find(e => e.isFeiticeiroImortal); if (!existingFeiticeiro) { const feiticeiro = new FeiticeiroImortalDasTrevas(getSpawnPosition(), player); enemies.push(feiticeiro); scene.add(feiticeiro.mesh); this.activeBoss = feiticeiro; uiManager.showEventMessage("⚠️ Um feitiço ancestral está em ação... Lord Vouldemord chegou."); } }
-                this.timers.spawnLichKing -= dt; if(this.timers.spawnLichKing <= 0) { this.timers.spawnLichKing = 200; const existingLichKing = enemies.find(e => e.isLichKing); if(!existingLichKing) { const lichKing = new LichKing(getSpawnPosition(), player); enemies.push(lichKing); scene.add(lichKing.mesh); this.activeBoss = lichKing; uiManager.showEventMessage("⚠️ O frio absoluto tomou conta... O Lich King se ergue da tumba!"); } }
-                // Spawn do Gangplank
-                this.timers.spawnGangplank -= dt; if (this.timers.spawnGangplank <= 0) { this.timers.spawnGangplank = 360; if (!this.isGangplankAlive) { this.isGangplankAlive = true; const gangplank = new Gangplank(getSpawnPosition("Spawn_Porto"), player); enemies.push(gangplank); scene.add(gangplank.mesh); this.activeBoss = gangplank; uiManager.showEventMessage("⚠️ O cheiro de pólvora e rum está no ar... Gangplank chegou!"); } }
-            }
-            checkEvents(dt) { const superBossEvent = this.eventTimers.superBoss; if (!superBossEvent.triggered && this.gameTime >= superBossEvent.time) { superBossEvent.triggered = true; this.activeBoss = spawnSuperBoss(); uiManager.showEventMessage("Uma força sobrenatural se manifesta!"); } const mightyOneEvent = this.eventTimers.theMightyOne; if (!mightyOneEvent.isAlive && this.gameTime >= mightyOneEvent.nextSpawnTime) { this.spawnTheMightyOne(); } }
-            spawnTheMightyOne() { const event = this.eventTimers.theMightyOne; event.isAlive = true; const boss = new TheMightyOne(getSpawnPosition()); event.instance = boss; enemies.push(boss); scene.add(boss.mesh); boss.init(); }
-            onTheMightyOneDefeated() { uiManager.showEventMessage("🌀 O Poderoso caiu… mas algo no mundo mudou para sempre…"); const event = this.eventTimers.theMightyOne; event.isAlive = false; event.instance = null; event.nextSpawnTime = this.gameTime + 600; this.triggerGlobalCollapse(); }
-            triggerGlobalCollapse() { this.collapseLevel++; this.globalMultiplier *= 20; enemies.forEach(e => { if (e && !e.isTheMightyOne) { e.applyGlobalBuff(20); } }); }
-            spawnRandomGuardian() { const GuardianClass = this.guardianTypes[Math.floor(Math.random() * this.guardianTypes.length)]; const e = new GuardianClass(getSpawnPosition()); enemies.push(e); scene.add(e.mesh); uiManager.showEventMessage(`UM ${e.name.toUpperCase()} APARECEU!`); }
-            updateRespawns(dt) { for (let i = this.respawnQueue.length - 1; i >= 0; i--) { const item = this.respawnQueue[i]; item.timer -= dt; if (item.timer <= 0) { item.enemy.respawn(); this.respawnQueue.splice(i, 1); } } }
-            scheduleRespawn(tower, delay) { this.respawnQueue.push({ enemy: tower, timer: delay }); }
-            endGame() { isGameOver = true; if (animationFrameId) cancelAnimationFrame(animationFrameId); uiManager.showGameOverScreen(player.score, this.gameTime, this.collapseLevel); }
+    constructor() {
+        this.isPaused = false;
+        this.gameTime = 0;
+        this.globalMultiplier = 1;
+        this.collapseLevel = 0;
+        this.shakeCamera = { duration: 0, intensity: 0 };
+        
+        // --- CONTROLE DE INIMIGOS ---
+        this.cavaleiros = []; 
+        this.isSterileZoneActive = false;
+        
+        this.timers = {
+            globalScale: 60, spawnPurpleCube: 5, spawnRedCone: 30, spawnGuardian: 240, spawnCaoDosInfernos: 120,
+            spawnRainha: 300, 
+            spawnPlantaCarnivora: 210,
+            spawnFeiticeiro: 420,
+            spawnLichKing: 600
+        };
+        this.isRainhaAlive = false; 
+        this.isPlantaCarnivoraAlive = false;
+        
+        // --- TIMERS DE EVENTOS ---
+        this.eventTimers = {
+            cavaleiroBranco: { time: 60, triggered: false },     // 1:00
+            cavaleiroVermelho: { time: 105, triggered: false },  // 1:45
+            cavaleiroPreto: { time: 150, triggered: false },     // 2:30
+            cavaleiroAmarelo: { time: 165, triggered: false },   // 2:45
+            superBoss: { time: 180, triggered: false },          // 3:00
+            theMightyOne: { nextSpawnTime: 600, isAlive: false, instance: null }
+        };
+        
+        this.respawnQueue = [];
+        this.activeBoss = null;
+        this.guardianTypes = [GuardianGuerreiro, GuardianMago, GuardianArqueiro];
+        this.defenderTypes = [BruxaDoGelo, MestraDaIlusao, BombardeiroInsano];
+        this.upgradeQueue = [];
+    }
+            
+    requestUpgrade(level) { this.upgradeQueue.push(level); if (!this.isPaused) this.processUpgradeQueue(); }
+    processUpgradeQueue() { if (this.upgradeQueue.length > 0) { this.pause(); const level = this.upgradeQueue.shift(); uiManager.showUpgradePanel(level); } }
+    pause() { this.isPaused = true; }
+    unpause() { this.isPaused = false; this.processUpgradeQueue(); }
+    update(dt) { if (isGameOver) return; this.gameTime += dt; this.updateSpawners(dt); this.updateRespawns(dt); this.checkEvents(dt); }
+    updateSpawners(dt) {
+        this.timers.globalScale -= dt; if (this.timers.globalScale <= 0) { this.timers.globalScale = 60; }
+        this.timers.spawnPurpleCube -= dt; if (this.timers.spawnPurpleCube <= 0) { this.timers.spawnPurpleCube = 5; for (let i = 0; i < 2; i++) spawnPurpleCube(); }
+        this.timers.spawnRedCone -= dt; if (this.timers.spawnRedCone <= 0) { this.timers.spawnRedCone = 30; gerarConeVermelhoComDefensor(); }
+        this.timers.spawnGuardian -= dt; if (this.gameTime > 240 && this.timers.spawnGuardian <= 0) { this.timers.spawnGuardian = 240; let spawnCount = 1; if (this.gameTime >= 1200) spawnCount = 3; else if (this.gameTime >= 600) spawnCount = 2; for (let i = 0; i < spawnCount; i++) this.spawnRandomGuardian(); }
+        this.timers.spawnCaoDosInfernos -= dt; if (this.timers.spawnCaoDosInfernos <= 0) { this.timers.spawnCaoDosInfernos = 120; let spawnCount = 1; if (this.gameTime >= 1200) spawnCount = 2; for (let i = 0; i < spawnCount; i++) spawnCaoDosInfernos(); uiManager.showEventMessage("O CÃO DOS INFERNOS ESTÁ À CAÇA!"); }
+        this.timers.spawnRainha -= dt; if (this.timers.spawnRainha <= 0) { this.timers.spawnRainha = 300; if (!this.isRainhaAlive) { this.isRainhaAlive = true; const rainha = new RainhaDasTrevas(getSpawnPosition(), player); enemies.push(rainha); scene.add(rainha.mesh); this.activeBoss = rainha; uiManager.showEventMessage("⚠️ A Rainha das Trevas emergiu das sombras… prepare-se!"); } }
+        this.timers.spawnPlantaCarnivora -= dt; if (this.timers.spawnPlantaCarnivora <= 0) { this.timers.spawnPlantaCarnivora = 210; if (!this.isPlantaCarnivoraAlive) { this.isPlantaCarnivoraAlive = true; const planta = new PlantaCarnivoraRainha(getSpawnPosition(), player); enemies.push(planta); scene.add(planta.mesh); this.activeBoss = planta; uiManager.showEventMessage("⚠️ O chão treme... A Planta Carnívora Rainha despertou!"); } }
+        this.timers.spawnFeiticeiro -= dt; if (this.timers.spawnFeiticeiro <= 0) { this.timers.spawnFeiticeiro = 420; const existingFeiticeiro = enemies.find(e => e.isFeiticeiroImortal); if (!existingFeiticeiro) { const feiticeiro = new FeiticeiroImortalDasTrevas(getSpawnPosition(), player); enemies.push(feiticeiro); scene.add(feiticeiro.mesh); this.activeBoss = feiticeiro; uiManager.showEventMessage("⚠️ Um feitiço ancestral está em ação... Lord Vouldemord chegou."); } }
+        this.timers.spawnLichKing -= dt; if(this.timers.spawnLichKing <= 0) { this.timers.spawnLichKing = 600; const existingLichKing = enemies.find(e => e.isLichKing); if(!existingLichKing) { const lichKing = new LichKing(getSpawnPosition(), player); enemies.push(lichKing); scene.add(lichKing.mesh); this.activeBoss = lichKing; uiManager.showEventMessage("⚠️ O frio absoluto tomou conta... O Lich King se ergue da tumba!"); } }
+    }
+    
+    checkEvents(dt) {
+        const events = this.eventTimers;
+
+        if (!events.cavaleiroBranco.triggered && this.gameTime >= events.cavaleiroBranco.time) {
+            events.cavaleiroBranco.triggered = true;
+            spawnCavaleiroBranco();
+            uiManager.showEventMessage("A Conquista avança no horizonte...");
         }
+        if (!events.cavaleiroVermelho.triggered && this.gameTime >= events.cavaleiroVermelho.time) {
+            events.cavaleiroVermelho.triggered = true;
+            spawnCavaleiroVermelho();
+            uiManager.showEventMessage("O clamor da Guerra ecoa!");
+        }
+        if (!events.cavaleiroPreto.triggered && this.gameTime >= events.cavaleiroPreto.time) {
+            events.cavaleiroPreto.triggered = true;
+            spawnCavaleiroPreto();
+            uiManager.showEventMessage("A Fome consome a esperança...");
+        }
+        if (!events.cavaleiroAmarelo.triggered && this.gameTime >= events.cavaleiroAmarelo.time) {
+            events.cavaleiroAmarelo.triggered = true;
+            spawnCavaleiroAmarelo();
+            uiManager.showEventMessage("A sombra da Morte se aproxima.");
+        }
+
+        if (!events.superBoss.triggered && this.gameTime >= events.superBoss.time) {
+            events.superBoss.triggered = true;
+            this.removerCavaleirosAtivos();
+            this.activeBoss = spawnSuperBoss();
+            uiManager.showEventMessage("Uma força sobrenatural se manifesta!");
+        }
+
+        const mightyOneEvent = events.theMightyOne;
+        if (!mightyOneEvent.isAlive && this.gameTime >= mightyOneEvent.nextSpawnTime) {
+            this.spawnTheMightyOne();
+        }
+    }
+    
+    removerCavaleirosAtivos() {
+        for (let i = this.cavaleiros.length - 1; i >= 0; i--) {
+            const cavaleiro = this.cavaleiros[i];
+            if (cavaleiro && !cavaleiro.isDestroyed) {
+                createExplosion(cavaleiro.mesh.position, 30, cavaleiro.mesh.material.color);
+                cavaleiro.destroy(); 
+            }
+        }
+        this.cavaleiros = []; 
+    }
+
+    spawnTheMightyOne() { const event = this.eventTimers.theMightyOne; event.isAlive = true; const boss = new TheMightyOne(getSpawnPosition()); event.instance = boss; enemies.push(boss); scene.add(boss.mesh); boss.init(); }
+    onTheMightyOneDefeated() { uiManager.showEventMessage("🌀 O Poderoso caiu… mas algo no mundo mudou para sempre…"); const event = this.eventTimers.theMightyOne; event.isAlive = false; event.instance = null; event.nextSpawnTime = this.gameTime + 600; this.triggerGlobalCollapse(); }
+    triggerGlobalCollapse() { this.collapseLevel++; this.globalMultiplier *= 20; enemies.forEach(e => { if (e && !e.isTheMightyOne) { e.applyGlobalBuff(20); } }); }
+    spawnRandomGuardian() { const GuardianClass = this.guardianTypes[Math.floor(Math.random() * this.guardianTypes.length)]; const e = new GuardianClass(getSpawnPosition()); enemies.push(e); scene.add(e.mesh); uiManager.showEventMessage(`UM ${e.name.toUpperCase()} APARECEU!`); }
+    updateRespawns(dt) { for (let i = this.respawnQueue.length - 1; i >= 0; i--) { const item = this.respawnQueue[i]; item.timer -= dt; if (item.timer <= 0) { item.enemy.respawn(); this.respawnQueue.splice(i, 1); } } }
+    scheduleRespawn(tower, delay) { this.respawnQueue.push({ enemy: tower, timer: delay }); }
+    endGame() { isGameOver = true; if (animationFrameId) cancelAnimationFrame(animationFrameId); uiManager.showGameOverScreen(player.score, this.gameTime, this.collapseLevel); }
+}
         class UIManager {
             constructor() {
                 this.upgradePanel = document.getElementById('upgrade-panel'); this.upgradeTitle = document.getElementById('upgrade-title'); this.upgradeDesc = document.getElementById('upgrade-description');
@@ -2281,6 +2823,39 @@
         function gerarConeVermelhoComDefensor() { const conePos = getSpawnPosition(); const cone = new RedCone(conePos); enemies.push(cone); scene.add(cone.mesh); if(gameManager.defenderTypes && gameManager.defenderTypes.length > 0) { const DefenderClass = gameManager.defenderTypes[Math.floor(Math.random() * gameManager.defenderTypes.length)]; const offset = new THREE.Vector3((Math.random() - 0.5) * 8, 0, (Math.random() - 0.5) * 8); const defenderPos = conePos.clone().add(offset); const defender = new DefenderClass(defenderPos, cone); enemies.push(defender); scene.add(defender.mesh); } }
         function spawnSuperBoss() { const e = new SuperBoss(getSpawnPosition()); enemies.push(e); gameManager.activeBoss = e; scene.add(e.mesh); return e; }
         function spawnCaoDosInfernos() { const e = new CaoDosInfernos(getSpawnPosition(), player.level); enemies.push(e); scene.add(e.mesh); return e; }
+        // =================================================================================
+// INÍCIO: FUNÇÕES DE SPAWN DOS CAVALEIROS
+// =================================================================================
+function spawnCavaleiroBranco() {
+    const cavaleiro = new CavaleiroBranco(getSpawnPosition(), player);
+    enemies.push(cavaleiro);
+    gameManager.cavaleiros.push(cavaleiro);
+    scene.add(cavaleiro.mesh);
+}
+
+function spawnCavaleiroVermelho() {
+    const cavaleiro = new CavaleiroVermelho(getSpawnPosition(), player);
+    enemies.push(cavaleiro);
+    gameManager.cavaleiros.push(cavaleiro);
+    scene.add(cavaleiro.mesh);
+}
+
+function spawnCavaleiroPreto() {
+    const cavaleiro = new CavaleiroPreto(getSpawnPosition(), player);
+    enemies.push(cavaleiro);
+    gameManager.cavaleiros.push(cavaleiro);
+    scene.add(cavaleiro.mesh);
+}
+
+function spawnCavaleiroAmarelo() {
+    const cavaleiro = new CavaleiroAmarelo(getSpawnPosition(), player);
+    enemies.push(cavaleiro);
+    gameManager.cavaleiros.push(cavaleiro);
+    scene.add(cavaleiro.mesh);
+}
+// =================================================================================
+// FIM: FUNÇÕES DE SPAWN DOS CAVALEIROS
+// =================================================================================
         function createExplosion(position, count, color) { for (let i = 0; i < count; i++) { const velocity = new THREE.Vector3((Math.random() - 0.5) * 5, Math.random() * 5, (Math.random() - 0.5) * 5); const p = new Particle(position, velocity, color, Math.random() * 1 + 0.5); particles.push(p); scene.add(p.mesh); } }
         function removeFromArray(arr, obj) { const i = arr.indexOf(obj); if (i > -1) arr.splice(i, 1); }
         function onWindowResize() { if(camera && renderer) { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); } }

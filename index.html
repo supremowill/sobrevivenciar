@@ -598,8 +598,8 @@
                 this.skills = {
                     q: { cooldown: 5000, lastUsed: 0, duration: 200, timer: 0, isDashing: false, dashSpeed: 30 },
                     w: { cooldown: 8000, lastUsed: 0 },
-                    e: { cooldown: 20000, lastUsed: 0, duration: 10000, timer: 0, isActive: false, shieldHp: 0, maxShieldHp: 0, damageAbsorbed: 0 },
-                    r: { cooldown: 50000, lastUsed: 0, duration: 10000, timer: 0, isActive: false },
+                    e: { cooldown: 20000, lastUsed: 0, duration: 15000, timer: 0, isActive: false, shieldHp: 0, maxShieldHp: 0, damageAbsorbed: 0 },
+                    r: { cooldown: 50000, lastUsed: 0, duration: 25000, timer: 0, isActive: false },
                 };
                 this.shieldMesh = null; this.ultimateAura = null;
 				
@@ -632,7 +632,7 @@
             }
 
             getDamage(isAbility = false) {
-                let base = 40 * (this.level * 1.8);
+                let base = 40 * (this.level * 20);
 
                 const sabrePirataBuff = this.timedBuffs.find(b => b.type === 'sabre_pirata');
                 if (sabrePirataBuff && !isAbility) {
@@ -693,7 +693,7 @@
                         }
                     }
                     if (this.activeBuff.type === 'arqueiro') {
-                        const numProjectiles = 5;
+                        const numProjectiles = 10;
                         const coneAngle = Math.PI / 8;
                         const dir = new THREE.Vector3(); this.mesh.getWorldDirection(dir);
                         for (let i = 0; i < numProjectiles; i++) {
@@ -1339,7 +1339,7 @@
             }
         }
 
-        class PurpleCube extends Enemy { constructor(position) { super(position); const baseHp = 300; const baseDamage = 25; this.maxHp = baseHp * gameManager.globalMultiplier; this.hp = this.maxHp; this.damage = baseDamage * gameManager.globalMultiplier; this.xp = 50; this.speed = 2.5; this.originalSpeed = 2.5; this.attackRange = 12; this.attackCooldown = 2000; this.lastAttackTime = 0; this.score = 50; const geo = new THREE.BoxGeometry(0.8, 0.8, 0.8); const mat = new THREE.MeshStandardMaterial({ color: 0x9b59b6 }); this.mesh = new THREE.Mesh(geo, mat); this.mesh.position.copy(position); this.mesh.position.y = 0.4; this.mesh.castShadow = true; this.hitboxRadius = 0.6; } scaleStats(multiplier) { this.applyGlobalBuff(multiplier); } destroy(instigator) { createExplosion(this.mesh.position, 10, this.mesh.material.color); if (instigator?.isPlayer) { instigator.addXp(this.xp); instigator.score += this.score; } super.destroy(instigator); } attack(target) { const now = Date.now(); if (now > this.lastAttackTime + this.attackCooldown) { this.lastAttackTime = now; const dir = target.mesh.position.clone().sub(this.mesh.position).normalize(); const p = new Projectile(this.mesh.position.clone(), dir, this, target); enemyProjectiles.push(p); scene.add(p.mesh); } } update(dt, player) { if (isGameOver || this.isDestroyed || this.updateStatus(dt)) return; const dist = this.mesh.position.distanceTo(player.mesh.position); if (dist > this.attackRange) { const dir = player.mesh.position.clone().sub(this.mesh.position).normalize(); this.mesh.position.add(dir.multiplyScalar(this.speed * dt)); } else { this.attack(player); } this.mesh.lookAt(player.mesh.position.x, this.mesh.position.y, player.mesh.position.z); } }
+        class PurpleCube extends Enemy { constructor(position) { super(position); const baseHp = 300; const baseDamage = 25; this.maxHp = baseHp * gameManager.globalMultiplier; this.hp = this.maxHp; this.damage = baseDamage * gameManager.globalMultiplier; this.xp = 250; this.speed = 2.5; this.originalSpeed = 2.5; this.attackRange = 12; this.attackCooldown = 2000; this.lastAttackTime = 0; this.score = 50; const geo = new THREE.BoxGeometry(0.8, 0.8, 0.8); const mat = new THREE.MeshStandardMaterial({ color: 0x9b59b6 }); this.mesh = new THREE.Mesh(geo, mat); this.mesh.position.copy(position); this.mesh.position.y = 0.4; this.mesh.castShadow = true; this.hitboxRadius = 0.6; } scaleStats(multiplier) { this.applyGlobalBuff(multiplier); } destroy(instigator) { createExplosion(this.mesh.position, 10, this.mesh.material.color); if (instigator?.isPlayer) { instigator.addXp(this.xp); instigator.score += this.score; } super.destroy(instigator); } attack(target) { const now = Date.now(); if (now > this.lastAttackTime + this.attackCooldown) { this.lastAttackTime = now; const dir = target.mesh.position.clone().sub(this.mesh.position).normalize(); const p = new Projectile(this.mesh.position.clone(), dir, this, target); enemyProjectiles.push(p); scene.add(p.mesh); } } update(dt, player) { if (isGameOver || this.isDestroyed || this.updateStatus(dt)) return; const dist = this.mesh.position.distanceTo(player.mesh.position); if (dist > this.attackRange) { const dir = player.mesh.position.clone().sub(this.mesh.position).normalize(); this.mesh.position.add(dir.multiplyScalar(this.speed * dt)); } else { this.attack(player); } this.mesh.lookAt(player.mesh.position.x, this.mesh.position.y, player.mesh.position.z); } }
         
         class RedCone extends Enemy { constructor(position) { super(position); this.maxHp = 900 * gameManager.globalMultiplier; this.hp = this.maxHp; this.damage = 15 * gameManager.globalMultiplier; this.xp = 1000; this.speed = 0; this.originalSpeed = 0; this.attackRange = 10; this.attackCooldown = 1000; this.lastAttackTime = 0; this.score = 150; this.projectileCount = 1; this.lastProjectileIncreaseTime = 0; const geo = new THREE.ConeGeometry(0.7, 1.5, 16); const mat = new THREE.MeshStandardMaterial({ color: 0xe74c3c }); this.mesh = new THREE.Mesh(geo, mat); this.mesh.position.copy(position); this.mesh.position.y = 0.75; this.mesh.castShadow = true; this.hitboxRadius = 0.7; } scaleStats(multiplier) { this.applyGlobalBuff(multiplier); } destroy(instigator) { createExplosion(this.mesh.position, 15, this.mesh.material.color); if (instigator?.isPlayer) { instigator.addXp(this.xp); instigator.score += this.score; } super.destroy(instigator); } attack(target) { const now = Date.now(); if (now > this.lastAttackTime + this.attackCooldown) { this.lastAttackTime = now; const baseDir = target.mesh.position.clone().sub(this.mesh.position).normalize(); const coneAngle = Math.PI / 6; for (let i = 0; i < this.projectileCount; i++) { const offset = (this.projectileCount > 1) ? (i - (this.projectileCount - 1) / 2) * (coneAngle / (this.projectileCount - 1)) : 0; const dir = baseDir.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), offset); const p = new Projectile(this.mesh.position.clone(), dir, this, target); enemyProjectiles.push(p); scene.add(p.mesh); } } } update(dt, player) { if (isGameOver || this.isDestroyed || this.updateStatus(dt)) return; this.lastProjectileIncreaseTime += dt; if (this.lastProjectileIncreaseTime > 5) { this.lastProjectileIncreaseTime = 0; this.projectileCount++; } this.mesh.lookAt(player.mesh.position.x, this.mesh.position.y, player.mesh.position.z); if (this.mesh.position.distanceTo(player.mesh.position) <= this.attackRange) this.attack(player); } }
         
@@ -1416,7 +1416,7 @@
             constructor(position, player) {
                 super(position);
                 this.name = "Lord Vouldemord"; this.isFeiticeiroImortal = true;
-                this.maxHp = 100000 + (1000 * player.level); this.hp = this.maxHp;
+                this.maxHp = 50000 + (1000 * player.level); this.hp = this.maxHp;
                 this.baseDamage = 500 + (player.maxHp * 0.8);
                 this.speed = 1.2; this.originalSpeed = 1.2; this.xp = 50000; this.score = 10000;
                 this.hitboxRadius = 1.2; this.idealDistance = 18; this.retreatDistance = 12;

@@ -632,7 +632,7 @@
             }
 
             getDamage(isAbility = false) {
-                let base = 40 * (this.level * 20);
+                let base = 40 * (this.level * 2.0);
 
                 const sabrePirataBuff = this.timedBuffs.find(b => b.type === 'sabre_pirata');
                 if (sabrePirataBuff && !isAbility) {
